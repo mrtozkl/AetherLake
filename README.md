@@ -390,6 +390,19 @@ DAGs are located in `pipelines/airflow/dags/` and synced to Airflow via Git or C
 
 ---
 
+## 🚨 Security & Production Readiness
+
+AetherLake is designed to be easy to run locally, which means **the repository contains hardcoded dummy passwords and fallback secrets** (e.g., inside `helm-charts/security-stack/secrets.yaml`, `values.yaml`, and `.env` fallbacks). 
+
+> [!WARNING]
+> **DO NOT USE DEFAULT SECRETS IN PRODUCTION.** 
+> Before exposing your AetherLake cluster to a public or production environment, you **MUST**:
+> 1. Change all default passwords (MinIO root, Keycloak admin, Trino client secrets, etc.) in your `secrets.yaml` and `values.yaml` files.
+> 2. Ensure `NEXTAUTH_SECRET` is set as an environment variable in the Control Panel to override the local development fallback.
+> 3. Use proper TLS certificates on the NGINX Ingress Controller.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Whether it's a bug fix, new feature, or documentation improvement.
