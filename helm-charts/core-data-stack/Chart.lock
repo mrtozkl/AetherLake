@@ -1,0 +1,18 @@
+dependencies:
+- name: trino
+  repository: https://trinodb.github.io/charts
+  version: 0.21.0
+- name: spark-operator
+  repository: https://kubeflow.github.io/spark-operator
+  version: 1.1.27
+- name: polaris
+  repository: file://./charts/polaris
+  version: 0.1.0
+- name: airflow
+  repository: https://charts.bitnami.com/bitnami
+  version: 13.1.2
+- name: milvus
+  repository: https://zilliztech.github.io/milvus-helm/
+  version: 5.0.14
+digest: sha256:a2457e6c6251b6521782866f52af4dfa30a29bbc930689e2e8fd3a39f10ecc85
+generated: "2026-03-06T23:16:59.890898+03:00"

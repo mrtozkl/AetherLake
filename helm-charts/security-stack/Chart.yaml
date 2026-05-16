@@ -1,0 +1,11 @@
+apiVersion: v2
+name: security-stack
+description: Centralized Identity and SSO via Keycloak for Data Lakehouse
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: keycloak
+    version: 25.2.0
+    repository: https://charts.bitnami.com/bitnami
+    condition: keycloak.enabled

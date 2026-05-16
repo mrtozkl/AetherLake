@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: iceberg
+    schema: lakehouse.bronze
+    tables:
+      - name: user_events
+        description: "Raw events ingested from MinIO into Iceberg Bronze layer"

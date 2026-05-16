@@ -1,0 +1,36 @@
+image:
+  repository: bitnamilegacy/airflow
+git:
+  image:
+    repository: bitnamilegacy/git
+postgresql:
+  image:
+    repository: bitnamilegacy/postgresql
+redis:
+  image:
+    repository: bitnamilegacy/redis
+
+auth:
+  existingSecret: "aetherlake-credentials"
+  passwordSecretKey: "airflow-oidc-secret"
+
+configuration:
+  webserver:
+    base_url: "http://airflow.aetherlake.local"
+  api:
+    base_url: "http://airflow.aetherlake.local"
+
+web:
+  extraEnvVars:
+    - name: AIRFLOW__WEBSERVER__BASE_URL
+      value: "http://airflow.aetherlake.local"
+    - name: AIRFLOW__API__BASE_URL
+      value: "http://airflow.aetherlake.local"
+    - name: AIRFLOW__WEBSERVER__AUTHENTICATE
+      value: "True"
+    - name: AIRFLOW__WEBSERVER__AUTH_BACKEND
+      value: "airflow.providers.fab.auth_manager.api.auth.backend.default"
+defaultInitContainers:
+  prepareVenv:
+    resourcesPreset: "large"
+

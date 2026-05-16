@@ -1,0 +1,65 @@
+{{- if .Values.minio.enabled }}
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  name: minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: minio
+spec:
+  image: {{ .Values.minio.image | default "quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z" }}
+  imagePullSecret: {}
+  ## Standalone mode: 1 server, 1 volume
+  pools:
+    - servers: {{ .Values.minio.servers | default 1 }}
+      name: pool-0
+      volumesPerServer: {{ .Values.minio.volumesPerServer | default 1 }}
+      volumeClaimTemplate:
+        apiVersion: v1
+        kind: persistentvolumeclaims
+        metadata: {}
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.minio.storageSize | default "20Gi" }}
+          {{- if .Values.minio.storageClassName }}
+          storageClassName: {{ .Values.minio.storageClassName }}
+          {{- end }}
+        status: {}
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+        fsGroupChangePolicy: "OnRootMismatch"
+      containerSecurityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
+      resources:
+        requests:
+          memory: 256Mi
+          cpu: 100m
+  mountPath: /export
+  subPath: ""
+  ## Reference to the config secret created in minio-tenant-config-secret.yaml
+  configuration:
+    name: minio-tenant-config
+  ## Disable auto TLS for local dev — use HTTP
+  requestAutoCert: false
+  features:
+    bucketDNS: false
+    domains: {}
+  ## Expose Console on port 9001
+  exposeServices:
+    console: true
+    minio: true
+{{- end }}

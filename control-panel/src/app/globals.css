@@ -1,0 +1,373 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: hsl(222, 16%, 7%);
+        --foreground: hsl(220, 10%, 93%);
+        --sidebar-width: 260px;
+    }
+}
+
+body {
+    background-color: var(--background);
+    color: var(--foreground);
+}
+
+/* ── Enterprise Panel Card ── */
+.panel-card {
+    background-color: hsl(222, 14%, 11%);
+    border: 1px solid hsl(222, 12%, 17%);
+    border-radius: 8px;
+}
+
+.panel-card-hover:hover {
+    background-color: hsl(222, 14%, 14%);
+    border-color: hsl(222, 12%, 22%);
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+/* ── Enterprise Input ── */
+.input-field {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 6px;
+    background-color: hsl(222, 16%, 7%);
+    border: 1px solid hsl(222, 12%, 17%);
+    color: hsl(220, 10%, 93%);
+    font-size: 0.875rem;
+    transition: border-color 150ms ease;
+}
+
+.input-field::placeholder {
+    color: hsl(220, 10%, 35%);
+}
+
+.input-field:focus {
+    outline: none;
+    border-color: hsl(217, 55%, 50%);
+    box-shadow: 0 0 0 1px hsla(217, 55%, 50%, 0.15);
+}
+
+/* ── Enterprise Button Variants ── */
+.btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    background-color: hsl(217, 55%, 50%);
+    color: white;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: background-color 150ms ease;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-primary:hover {
+    background-color: hsl(217, 55%, 44%);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    background-color: transparent;
+    color: hsl(220, 10%, 70%);
+    font-weight: 500;
+    font-size: 0.875rem;
+    border: 1px solid hsl(222, 12%, 17%);
+    transition: all 150ms ease;
+    cursor: pointer;
+}
+
+.btn-secondary:hover {
+    background-color: hsl(222, 14%, 14%);
+    color: hsl(220, 10%, 93%);
+    border-color: hsl(222, 12%, 22%);
+}
+
+.btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background-color: transparent;
+    color: hsl(220, 10%, 50%);
+    font-size: 0.8125rem;
+    border: none;
+    transition: all 150ms ease;
+    cursor: pointer;
+}
+
+.btn-ghost:hover {
+    background-color: hsl(222, 14%, 14%);
+    color: hsl(220, 10%, 93%);
+}
+
+.btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background-color: transparent;
+    color: hsl(4, 55%, 50%);
+    font-size: 0.8125rem;
+    border: none;
+    transition: all 150ms ease;
+    cursor: pointer;
+}
+
+.btn-danger:hover {
+    background-color: hsla(4, 55%, 50%, 0.1);
+}
+
+/* ── Status Indicators ── */
+.status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-dot-healthy {
+    background-color: hsl(152, 50%, 40%);
+}
+
+.status-dot-pending {
+    background-color: hsl(38, 70%, 50%);
+}
+
+.status-dot-error {
+    background-color: hsl(4, 55%, 50%);
+}
+
+/* ── Data Table ── */
+.data-table {
+    width: 100%;
+    text-align: left;
+    font-size: 0.8125rem;
+}
+
+.data-table thead {
+    background-color: hsl(222, 14%, 9%);
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(220, 10%, 50%);
+}
+
+.data-table th {
+    padding: 10px 16px;
+    font-weight: 600;
+    white-space: nowrap;
+    border-bottom: 1px solid hsl(222, 12%, 17%);
+}
+
+.data-table td {
+    padding: 8px 16px;
+    white-space: nowrap;
+    font-family: 'Inter', ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: hsl(220, 10%, 60%);
+    border-bottom: 1px solid hsl(222, 12%, 12%);
+}
+
+.data-table tbody tr:hover {
+    background-color: hsl(222, 14%, 11%);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: hsl(222, 12%, 20%);
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(222, 12%, 30%);
+}
+
+/* ── Sidebar ── */
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: hsl(220, 10%, 50%);
+    transition: all 120ms ease;
+    text-decoration: none;
+}
+
+.sidebar-link:hover {
+    background-color: hsl(222, 14%, 14%);
+    color: hsl(220, 10%, 85%);
+}
+
+.sidebar-link-active {
+    background-color: hsl(217, 55%, 50%, 0.1);
+    color: hsl(217, 55%, 60%);
+}
+
+/* ── Tab navigation ── */
+.tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: hsl(220, 10%, 42%);
+    border-bottom: 2px solid transparent;
+    transition: all 120ms ease;
+    white-space: nowrap;
+    cursor: pointer;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+}
+
+.tab-btn:hover {
+    color: hsl(220, 10%, 70%);
+}
+
+.tab-btn-active {
+    color: hsl(220, 10%, 93%);
+    border-bottom-color: hsl(217, 55%, 50%);
+}
+
+/* ── Badge ── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    border: 1px solid;
+}
+
+.badge-success {
+    background-color: hsla(152, 50%, 40%, 0.1);
+    color: hsl(152, 50%, 50%);
+    border-color: hsla(152, 50%, 40%, 0.2);
+}
+
+.badge-warning {
+    background-color: hsla(38, 70%, 50%, 0.1);
+    color: hsl(38, 70%, 55%);
+    border-color: hsla(38, 70%, 50%, 0.2);
+}
+
+.badge-error {
+    background-color: hsla(4, 55%, 50%, 0.1);
+    color: hsl(4, 55%, 55%);
+    border-color: hsla(4, 55%, 50%, 0.2);
+}
+
+.badge-info {
+    background-color: hsla(217, 55%, 50%, 0.1);
+    color: hsl(217, 55%, 60%);
+    border-color: hsla(217, 55%, 50%, 0.2);
+}
+
+.badge-neutral {
+    background-color: hsla(220, 10%, 42%, 0.1);
+    color: hsl(220, 10%, 55%);
+    border-color: hsla(220, 10%, 42%, 0.2);
+}
+
+/* ── Alert ── */
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    border: 1px solid;
+}
+
+.alert-error {
+    background-color: hsla(4, 55%, 50%, 0.06);
+    border-color: hsla(4, 55%, 50%, 0.15);
+    color: hsl(4, 55%, 60%);
+}
+
+.alert-success {
+    background-color: hsla(152, 50%, 40%, 0.06);
+    border-color: hsla(152, 50%, 40%, 0.15);
+    color: hsl(152, 50%, 50%);
+}
+
+.alert-warning {
+    background-color: hsla(38, 70%, 50%, 0.06);
+    border-color: hsla(38, 70%, 50%, 0.15);
+    color: hsl(38, 70%, 55%);
+}
+
+/* ── Enterprise Modal ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 16px;
+}
+
+.modal-content {
+    background-color: hsl(222, 14%, 11%);
+    border: 1px solid hsl(222, 12%, 17%);
+    border-radius: 10px;
+    width: 100%;
+    max-width: 460px;
+    overflow: hidden;
+}
+
+.modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid hsl(222, 12%, 17%);
+}
+
+.modal-body {
+    padding: 20px 24px;
+}
+
+.modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid hsl(222, 12%, 17%);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}

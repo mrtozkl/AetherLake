@@ -1,0 +1,30 @@
+apiVersion: v2
+name: core-data-stack
+description: Modular Data Lakehouse Umbrella Chart (MinIO, Trino, Spark, Polaris)
+type: application
+version: 0.1.0
+
+dependencies:
+  # MinIO is now deployed via MinIO Operator Tenant CRD (see templates/minio-tenant.yaml)
+  # - name: minio (removed — replaced by AIStor Tenant CRD)
+  - name: trino
+    version: 0.21.0
+    repository: https://trinodb.github.io/charts
+    condition: trino.enabled
+  - name: spark-operator
+    version: 1.1.27
+    repository: https://kubeflow.github.io/spark-operator
+    condition: spark-operator.enabled
+  # Local subchart for Apache Polaris
+  - name: polaris
+    version: 0.1.0
+    repository: "file://./charts/polaris"
+    condition: polaris.enabled
+  - name: airflow
+    version: 13.1.2
+    repository: https://charts.bitnami.com/bitnami
+    condition: airflow.enabled
+  - name: milvus
+    version: 5.0.14
+    repository: https://zilliztech.github.io/milvus-helm/
+    condition: milvus.enabled

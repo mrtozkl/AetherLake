@@ -1,0 +1,18 @@
+dependencies:
+- name: minio
+  repository: https://charts.min.io/
+  version: 5.0.14
+- name: trino
+  repository: https://trinodb.github.io/charts
+  version: 0.20.0
+- name: spark-operator
+  repository: https://kubeflow.github.io/spark-operator
+  version: 1.1.27
+- name: milvus
+  repository: https://zilliztech.github.io/milvus-helm/
+  version: 4.1.28
+- name: keycloak
+  repository: https://charts.bitnami.com/bitnami
+  version: 18.2.0
+digest: sha256:e8eb463a5b95b400e74fc29ec5d02cc84446519b853ec3fcf935d4d34a628c12
+generated: "2026-03-08T16:01:53.554885+03:00"

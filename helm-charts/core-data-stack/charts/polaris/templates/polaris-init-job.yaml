@@ -1,0 +1,125 @@
+{{- if and .Values.initCatalog .Values.initCatalog.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-polaris-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: polaris-init
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    # Run this job after the polaris deployment is created/upgraded
+    # but also make sure minio-init finishes first (weight 10 vs 5)
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        app: polaris-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: polaris-init
+          image: curlimages/curl:8.7.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POLARIS_URL
+              value: "http://{{ .Release.Name }}-polaris:{{ .Values.service.port }}"
+            # We use the bootstrap credentials defined in the deployment (hardcoded there as POLARIS,open-lake-admin,open-lake-secret)
+            # In a real production setup, these should come from a secret.
+            - name: CLIENT_ID
+              value: "open-lake-admin"
+            - name: CLIENT_SECRET
+              value: "open-lake-secret"
+            - name: CATALOG_NAME
+              value: {{ .Values.initCatalog.name | quote }}
+            - name: MINIO_ENDPOINT
+              value: {{ .Values.initCatalog.s3Endpoint | quote }}
+            - name: MINIO_BUCKET
+              value: {{ .Values.initCatalog.s3Bucket | quote }}
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: minio-root-user
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: minio-root-password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for Polaris REST API to be ready..."
+              until curl -s ${POLARIS_URL}/api/management/v1/catalogs > /dev/null; do
+                echo "Polaris not ready yet. Retrying in 5 seconds..."
+                sleep 5
+              done
+              
+              echo "Polaris is ready. Authenticating..."
+              # 1. Get OAuth2 Token
+              TOKEN_RESPONSE=$(curl -s -X POST "${POLARIS_URL}/api/catalog/v1/oauth/tokens" \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -d "grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&scope=PRINCIPAL_ROLE:ALL")
+              
+              # Extract token using simple shell scripting since jq is not in curl image
+              BEARER_TOKEN=$(echo $TOKEN_RESPONSE | grep -o '"access_token"[^,]*' | awk -F'"' '{print $4}')
+              
+              if [ -z "$BEARER_TOKEN" ]; then
+                echo "Failed to get bearer token. Response: $TOKEN_RESPONSE"
+                exit 1
+              fi
+              
+              echo "Authentication successful. Creating catalog '${CATALOG_NAME}'..."
+              
+              # 2. Check if catalog already exists
+              CATALOG_EXISTS=$(curl -s -H "Authorization: Bearer ${BEARER_TOKEN}" "${POLARIS_URL}/api/management/v1/catalogs" | grep -c "\"name\":\"${CATALOG_NAME}\"")
+              
+              if [ "$CATALOG_EXISTS" -gt 0 ]; then
+                echo "Catalog '${CATALOG_NAME}' already exists. Skipping creation."
+                exit 0
+              fi
+              
+              # 3. Create Catalog
+              # Construct JSON payload
+              PAYLOAD=$(cat <<EOF
+              {
+                "catalog": {
+                  "name": "${CATALOG_NAME}",
+                  "type": "INTERNAL",
+                  "properties": {
+                    "default-base-location": "s3://${MINIO_BUCKET}/"
+                  },
+                  "storageConfigInfo": {
+                    "storageType": "S3",
+                    "properties": {
+                      "s3.endpoint": "${MINIO_ENDPOINT}",
+                      "s3.region": "us-east-1",
+                      "s3.access-key-id": "${MINIO_ACCESS_KEY}",
+                      "s3.secret-access-key": "${MINIO_SECRET_KEY}",
+                      "s3.path-style-access": "true"
+                    }
+                  }
+                }
+              }
+              EOF
+              )
+              
+              CREATE_RESPONSE=$(curl -s -X POST "${POLARIS_URL}/api/management/v1/catalogs" \
+                -H "Authorization: Bearer ${BEARER_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "${PAYLOAD}")
+                
+              echo "Create response: $CREATE_RESPONSE"
+              
+              if echo "$CREATE_RESPONSE" | grep -q "\"name\":\"${CATALOG_NAME}\""; then
+                echo "Successfully created catalog '${CATALOG_NAME}'."
+              else
+                echo "Failed to create catalog. See response above."
+                exit 1
+              fi
+{{- end }}

@@ -1,0 +1,76 @@
+{{- if and .Values.minio.enabled .Values.minio.initBuckets }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-minio-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: minio-init
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    # Run this job after the minio tenant is created/upgraded
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        app: minio-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: minio-mc
+          image: minio/mc:RELEASE.2024-04-18T16-45-29Z
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-tenant-config
+                  key: config.env
+            # Because config.env contains shell exports, we extract the values directly
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Extract username and password from the config.env secret
+              # The secret has format "export VAR=VALUE"
+              while IFS= read -r line; do
+                case "$line" in
+                  *MINIO_ROOT_USER=*)
+                    USER="${line#*MINIO_ROOT_USER=}"
+                    ;;
+                  *MINIO_ROOT_PASSWORD=*)
+                    PASS="${line#*MINIO_ROOT_PASSWORD=}"
+                    ;;
+                esac
+              done < /etc/minio/config.env
+              
+              echo "Waiting for MinIO server to be ready at http://minio-hl:9000..."
+              # Use mc locally to check if the server is up since curl is missing
+              until mc alias set myminio http://minio-hl:9000 "$USER" "$PASS" >/dev/null 2>&1; do
+                echo "MinIO not ready yet. Retrying in 5 seconds..."
+                sleep 5
+              done
+              
+              echo "MinIO is ready and mc is configured."
+              
+              {{- range .Values.minio.initBuckets }}
+              echo "Creating bucket '{{ . }}'..."
+              mc mb myminio/{{ . }} --ignore-existing
+              # Allow public access for now as a default (can be customized later)
+              # mc anonymous set public myminio/{{ . }}
+              {{- end }}
+              
+              echo "Bucket initialization complete."
+          volumeMounts:
+            - name: minio-config
+              mountPath: /etc/minio
+              readOnly: true
+      volumes:
+        - name: minio-config
+          secret:
+            secretName: minio-tenant-config
+{{- end }}

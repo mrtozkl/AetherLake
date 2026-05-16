@@ -1,0 +1,12 @@
+lakehouse_trino:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: none
+      user: admin
+      host: core-data-stack-trino
+      port: 8080
+      catalog: iceberg
+      schema: public
+      threads: 4

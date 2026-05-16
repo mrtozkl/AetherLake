@@ -1,0 +1,112 @@
+global:
+  # Base Configurations
+  oidc:
+    url: "http://keycloak.aetherlake.local"
+    clientId: "aetherlake-client"
+  polaris:
+    url: "http://core-data-stack-polaris.aetherlake.svc.cluster.local:8181"
+  s3:
+    endpoint: "http://minio.aetherlake.svc.cluster.local:9000"
+    bucket: "lakehouse"
+  
+  # Master Secret managed by Control Panel Contains All Passwords
+  existingSecret: "aetherlake-credentials"
+
+# Component Toggles and Secret Linkages
+minio:
+  enabled: true
+  auth:
+    existingSecret: "aetherlake-credentials"
+    rootUserSecretKey: "minio-root-user"
+    rootPasswordSecretKey: "minio-root-password"
+  defaultBuckets: "lakehouse"
+
+polaris:
+  enabled: true
+  initCatalog:
+    enabled: true
+    name: "lakehouse_catalog"
+    s3Endpoint: "http://minio.aetherlake.svc.cluster.local:9000"
+    s3Bucket: "lakehouse"
+
+trino:
+  enabled: true
+  server:
+    workers: 2
+  env:
+    - name: MINIO_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: aetherlake-credentials
+          key: minio-root-user
+    - name: MINIO_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: aetherlake-credentials
+          key: minio-root-password
+    - name: OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: aetherlake-credentials
+          key: trino-oidc-secret
+  additionalCatalogs:
+    iceberg: |-
+      connector.name=iceberg
+      iceberg.catalog.type=rest
+      iceberg.rest-catalog.uri=http://polaris.aetherlake.svc.cluster.local:8181/api/catalog
+      iceberg.rest-catalog.oauth2.client-id=${global.oidc.clientId}
+      iceberg.rest-catalog.oauth2.client-secret=${ENV:OIDC_CLIENT_SECRET}
+      iceberg.rest-catalog.oauth2.credential-refresh=true
+      fs.native-s3.enabled=true
+      s3.endpoint=${global.s3.endpoint}
+      s3.region=us-east-1
+      s3.aws-access-key=${ENV:MINIO_ACCESS_KEY}
+      s3.aws-secret-key=${ENV:MINIO_SECRET_KEY}
+      s3.path-style-access=true
+
+airflow:
+  enabled: true
+  executor: "KubernetesExecutor"
+
+spark-operator:
+  enabled: true
+
+milvus:
+  enabled: true
+
+keycloak:
+  enabled: true
+  auth:
+    adminUser: admin
+    existingSecret: "aetherlake-credentials"
+    passwordSecretKey: "keycloak-admin-password"
+  keycloakConfigCli:
+    enabled: true
+    configuration:
+      aetherlake-realm.json: |
+        {
+          "realm": "aetherlake",
+          "enabled": true,
+          "clients": [
+            {
+              "clientId": "aetherlake-client",
+              "enabled": true,
+              "clientAuthenticatorType": "client-secret",
+              "secret": "${OIDC_CLIENT_SECRET}",
+              "redirectUris": [
+                "*"
+              ],
+              "webOrigins": [
+                "*"
+              ],
+              "publicClient": false,
+              "protocol": "openid-connect"
+            }
+          ]
+        }
+    extraEnvVars:
+      - name: OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: aetherlake-credentials
+            key: keycloak-oidc-secret

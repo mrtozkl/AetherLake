@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-polaris
+  labels:
+    app: polaris
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: polaris
+  template:
+    metadata:
+      labels:
+        app: polaris
+    spec:
+      containers:
+        - name: polaris
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8181
+              protocol: TCP
+          env:
+            - name: POLARIS_BOOTSTRAP_CREDENTIALS
+              value: "POLARIS,open-lake-admin,open-lake-secret"
+            - name: POLARIS_AUTHENTICATOR_TYPE
+              value: "jwt"
+            - name: SMALLRYE_JWT_VERIFY_ISSUER
+              value: "http://keycloak.open-lake.local/realms/open-lake"
+            - name: SMALLRYE_JWT_VERIFY_JWKS_LOCATION
+              value: "http://security-stack-keycloak:80/realms/open-lake/protocol/openid-connect/certs"
+            - name: POLARIS_REALM_CONTEXT_RESOLVER_TYPE
+              value: "default"
+            - name: POLARIS_REALM_CONTEXT_RESOLVER_DEFAULT_REALM
+              value: "POLARIS"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

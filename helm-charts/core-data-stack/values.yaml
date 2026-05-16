@@ -1,0 +1,113 @@
+global:
+  # The Control Panel will dynamically provision this Secret and update it via the Kubernetes API
+  existingSecret: "open-lake-credentials"
+  s3:
+    endpoint: "http://minio-hl:9000"
+    defaultBucket: "lakehouse"
+
+# 1. MinIO AIStor Configuration (Storage Layer — deployed via Operator Tenant CRD)
+minio:
+  enabled: true
+  # Official MinIO image with full OIDC Console support
+  image: "quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z"
+  # Standalone dev mode
+  servers: 1
+  volumesPerServer: 1
+  storageSize: "20Gi"
+  storageClassName: "hostpath"
+  # Root credentials (will be written to config.env secret)
+  rootUser: "minioadmin"
+  rootPassword: "minioadmin"
+  # Buckets to create on initialization
+  initBuckets:
+    - "lakehouse"
+    - "milvus-vectors"
+  # Keycloak OIDC SSO Config
+  oidc:
+    configUrl: "http://keycloak.open-lake.local/realms/open-lake/.well-known/openid-configuration"
+    clientId: "minio"
+    clientSecret: "minio-oidc-secret-123"
+    claimName: "policy"
+    scopes: "openid,profile,email"
+    keycloakRealm: "open-lake"
+    keycloakAdminUrl: "http://security-stack-keycloak/"
+
+# 2. Apache Polaris Custom Chart (Iceberg REST Catalog)
+polaris:
+  enabled: true
+  replicaCount: 1
+  initCatalog:
+    enabled: true
+    name: "lakehouse_catalog"
+    s3Endpoint: "http://minio-hl:9000"
+    s3Bucket: "lakehouse"
+
+# 3. Trino Configuration (SQL Engine)
+trino:
+  enabled: true
+  server:
+    workers: 2
+  env:
+    # Inject S3 credentials securely into the Trino pods
+    - name: MINIO_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: minio-root-user
+    - name: MINIO_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: minio-root-password
+  additionalCatalogs:
+    iceberg: |-
+      connector.name=iceberg
+      iceberg.catalog.type=rest
+      iceberg.rest-catalog.uri=http://core-data-stack-polaris:8181/api/catalog
+      iceberg.rest-catalog.security=OAUTH2
+      iceberg.rest-catalog.oauth2.credential=open-lake-admin:open-lake-secret
+      fs.native-s3.enabled=true
+      s3.endpoint=http://minio-hl:9000
+      s3.region=us-east-1
+      s3.aws-access-key=${ENV:MINIO_ACCESS_KEY}
+      s3.aws-secret-key=${ENV:MINIO_SECRET_KEY}
+      s3.path-style-access=true
+
+# 4. Apache Spark Operator (Processing Engine)
+spark-operator:
+  enabled: true
+  sparkJobNamespace: "default"
+
+# 5. Apache Airflow (Orchestrator)
+# Temporarily disabling Airflow as its embedded common templates are polluting MinIO's global scope.
+airflow:
+  enabled: false
+  web:
+    # Generic SSO / OIDC configuration will map to the Keycloak client
+    extraEnvVars:
+      - name: AIRFLOW__WEBSERVER__AUTHENTICATE
+        value: "True"
+      - name: AIRFLOW__WEBSERVER__AUTH_BACKEND
+        value: "airflow.providers.fab.auth_manager.api.auth.backend.default"
+
+# 6. Milvus (Vector Database)
+milvus:
+  enabled: true
+  cluster:
+    enabled: false # Use standalone for local cluster to save resources
+  standalone:
+    enabled: true
+  
+  # Disable embedded MinIO to prevent Bitnami common template clashes
+  # Instead, point it to the primary MinIO instance we deployed in step 1
+  minio:
+    enabled: false
+  
+  externalS3:
+    enabled: true
+    host: "core-data-stack-minio"
+    port: 9000
+    bucketName: "milvus-vectors"
+    # Inject AWS credentials securely
+    accessKey: "${ENV:MINIO_ACCESS_KEY}"
+    secretKey: "${ENV:MINIO_SECRET_KEY}"
