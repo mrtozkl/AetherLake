@@ -1,0 +1,21 @@
+/* AetherLake Custom Theme styling */
+:root {
+  --vp-c-brand-1: #00e5ff; /* Cyan accent */
+  --vp-c-brand-2: #00b0ff;
+  --vp-c-brand-3: #2979ff;
+  --vp-c-brand-soft: rgba(0, 229, 255, 0.16);
+}
+
+.dark {
+  --vp-c-brand-1: #00e5ff;
+  --vp-c-brand-2: #00b0ff;
+  --vp-c-brand-3: #2979ff;
+  --vp-c-brand-soft: rgba(0, 229, 255, 0.16);
+  --vp-c-bg: #0a1128; /* Deep dark blue background */
+  --vp-c-bg-alt: #101835;
+}
+
+/* Custom hero section image style */
+.VPHero .image-src {
+  filter: drop-shadow(0 0 20px rgba(0, 229, 255, 0.3));
+}
