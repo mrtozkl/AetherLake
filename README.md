@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge" alt="License" />
 </p>
 
-<h1 align="center">⚡ AetherLake</h1>
+<h1 align="center">⚡ AetherLake: Open-Source Data Lakehouse on Kubernetes</h1>
 
 <p align="center">
   <strong>Open-source Data Lakehouse platform on Kubernetes.</strong><br/>
