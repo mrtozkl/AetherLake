@@ -105,9 +105,126 @@ milvus:
   
   externalS3:
     enabled: true
-    host: "core-data-stack-minio"
+    host: "minio-hl"
     port: 9000
     bucketName: "milvus-vectors"
     # Inject AWS credentials securely
     accessKey: "${ENV:MINIO_ACCESS_KEY}"
     secretKey: "${ENV:MINIO_SECRET_KEY}"
+
+# 7. Apache Superset Configuration
+superset:
+  enabled: true
+  
+  # Inject Keycloak OIDC client secret from the unified secret
+  extraEnvRaw:
+    - name: SUPERSET_OIDC_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: superset-oidc-secret
+          
+  # Custom initialization script to import connections automatically
+  init:
+    initscript: |-
+      #!/bin/sh
+      set -e
+      superset-init --username admin --firstname Admin --lastname User --email admin@superset.com --password admin
+      if [ -f /app/configs/import_datasources.yaml ]; then
+        superset import_datasources -p /app/configs/import_datasources.yaml
+      fi
+
+  # Auto-provision Trino database connection on startup
+  extraConfigs:
+    import_datasources.yaml: |
+      databases:
+        - database_name: "Trino Analytics"
+          sqlalchemy_uri: "trino://admin@core-data-stack-trino:8080/iceberg"
+          expose_in_sqllab: true
+          allow_run_async: true
+
+  # Install required drivers at runtime
+  bootstrapScript: |
+    #!/bin/bash
+    if [ -f /app/.venv/bin/pip ]; then
+      /app/.venv/bin/pip install sqlalchemy-trino Authlib PyJWT
+    else
+      pip install sqlalchemy-trino Authlib PyJWT
+    fi
+
+  # Configuration overrides for Keycloak OIDC SSO Integration
+  configOverrides:
+    custom_sso: |
+      import os
+      from flask_appbuilder.security.manager import AUTH_OAUTH
+      from flask_appbuilder.security.sqla.manager import SecurityManager
+      import jwt
+
+      SECRET_KEY = "aetherlake-super-secret-key-that-is-long-enough"
+      AUTH_TYPE = AUTH_OAUTH
+      AUTH_USER_REGISTRATION = True
+      AUTH_USER_REGISTRATION_ROLE = "Public"
+
+      OAUTH_PROVIDERS = [
+          {
+              "name": "keycloak",
+              "token_key": "access_token",
+              "icon": "fa-key",
+              "remote_app": {
+                  "client_id": "superset",
+                  "client_secret": os.environ.get("SUPERSET_OIDC_SECRET", "superset-secret-key"),
+                  "server_metadata_url": "http://security-stack-keycloak:80/realms/aetherlake/.well-known/openid-configuration",
+                  "client_kwargs": {
+                      "scope": "openid profile email"
+                  }
+              }
+          }
+      ]
+
+      class CustomSsoSecurityManager(SecurityManager):
+          def oauth_user_info(self, provider, response=None):
+              if provider == 'keycloak':
+                  token = response.get('access_token')
+                  try:
+                      decoded = jwt.decode(token, options={"verify_signature": False})
+                      realm_roles = decoded.get('realm_access', {}).get('roles', [])
+                  except Exception:
+                      realm_roles = []
+                  
+                  me = self.appbuilder.sm.oauth_remotes[provider].get('userinfo').json()
+                  
+                  mapped_roles = ['Gamma']
+                  if 'data-admin' in realm_roles:
+                      mapped_roles = ['Admin']
+                  elif 'data-engineer' in realm_roles or 'data-scientist' in realm_roles:
+                      mapped_roles = ['Alpha']
+                  
+                  return {
+                      'username': me.get('preferred_username', me.get('sub')),
+                      'first_name': me.get('given_name', ''),
+                      'last_name': me.get('family_name', ''),
+                      'email': me.get('email', ''),
+                      'role_keys': mapped_roles
+                  }
+              return {}
+
+          def auth_user_oauth(self, userinfo, provider, response=None):
+              user = super().auth_user_oauth(userinfo, provider, response)
+              if user and provider == 'keycloak':
+                  role_keys = userinfo.get('role_keys', ['Gamma'])
+                  user.roles = []
+                  for role_name in role_keys:
+                      role = self.find_role(role_name)
+                      if role:
+                          user.roles.append(role)
+                  self.get_session.commit()
+              return user
+
+      CUSTOM_SECURITY_MANAGER = CustomSsoSecurityManager
+superset:
+  postgresql:
+    image:
+      tag: 15.6.0-debian-12-r12
+  redis:
+    image:
+      tag: 7.2.4-debian-12-r12

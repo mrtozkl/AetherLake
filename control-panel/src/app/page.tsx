@@ -7,7 +7,7 @@ import Sidebar from "./components/Sidebar";
 import {
     Database, Activity, Archive, Search, Network, Code2,
     ShieldCheck, LogIn, RefreshCw, Key, ExternalLink,
-    ArrowUpRight, Globe
+    ArrowUpRight, Globe, BarChart3
 } from "lucide-react";
 
 const SERVICES = [
@@ -31,6 +31,13 @@ const SERVICES = [
         icon: Activity,
         iconColor: "text-warning",
         url: "http://airflow.aetherlake.local",
+    },
+    {
+        nameKey: "ext.superset" as const,
+        descKey: "ext.supersetDesc" as const,
+        icon: BarChart3,
+        iconColor: "text-accent",
+        url: "http://superset.aetherlake.local",
     },
     {
         nameKey: "ext.milvus" as const,

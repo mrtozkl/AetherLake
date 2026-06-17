@@ -14,6 +14,7 @@ const SERVICE_DEPLOYMENT_MAP: Record<string, string> = {
     'MinIO Storage': 'minio',
     'Trino Analytics': 'core-data-stack-trino-coordinator', // Or worker, but coordinator is main
     'Apache Airflow': 'airflow-web',
+    'Apache Superset': 'core-data-stack-superset',
     'Milvus Vector Search': 'core-data-stack-milvus-attu', // Restarting Attu UI or the proxy
     'Apache Polaris': 'core-data-stack-polaris',
     'Unified SQL IDE': 'control-panel',

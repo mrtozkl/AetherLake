@@ -21,3 +21,7 @@ features:
   - title: 🎛️ Unified Control
     details: Manage the entire platform, run SQL queries, and monitor pods from the Next.js Control Panel.
 ---
+
+<div style="margin-top: 3rem; display: flex; flex-direction: column; gap: 2rem; align-items: center;">
+  <img src="/dashboard.png" alt="AetherLake Dashboard" style="border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);" />
+</div>

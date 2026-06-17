@@ -18,33 +18,15 @@ git clone https://github.com/mrtozkl/AetherLake.git
 cd AetherLake
 ```
 
-### 2. Create namespace
+### 2. Run the installer
+
+The installation script automates namespace creation, credential generation, and Helm deployments:
 
 ```bash
-kubectl create namespace aetherlake
+./install.sh
 ```
 
-### 3. Deploy the Security Stack (Keycloak)
-
-```bash
-cd helm-charts/security-stack
-helm dependency update
-helm install security-stack . -n aetherlake
-```
-
-### 4. Deploy the Core Data Stack
-
-```bash
-cd helm-charts/core-data-stack
-helm dependency update
-helm install core-data-stack . -n aetherlake
-```
-
-### 5. Apply Ingress rules
-
-```bash
-kubectl apply -f aetherlake-ingress.yaml
-```
+This will deploy Keycloak, MinIO, Trino, Polaris, and all other configured components into your local cluster.
 
 ### 6. Configure local DNS
 

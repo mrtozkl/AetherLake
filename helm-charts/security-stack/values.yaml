@@ -194,6 +194,14 @@ keycloak:
                   }
                 }
               ]
+            },
+            {
+              "clientId": "superset",
+              "enabled": true,
+              "publicClient": false,
+              "secret": "${ENV:SUPERSET_OIDC_SECRET}",
+              "redirectUris": ["*"],
+              "protocol": "openid-connect"
             }
           ]
         }
@@ -234,3 +242,8 @@ keycloak:
           secretKeyRef:
             name: aetherlake-credentials
             key: minio-oidc-secret
+      - name: SUPERSET_OIDC_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: aetherlake-credentials
+            key: superset-oidc-secret

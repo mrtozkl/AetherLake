@@ -67,3 +67,14 @@ spec:
                 name: core-data-stack-milvus-attu
                 port:
                   number: 3000
+    - host: superset.aetherlake.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: core-data-stack-superset
+                port:
+                  number: 8088
+

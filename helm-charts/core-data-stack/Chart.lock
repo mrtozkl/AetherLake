@@ -14,5 +14,8 @@ dependencies:
 - name: milvus
   repository: https://zilliztech.github.io/milvus-helm/
   version: 5.0.14
-digest: sha256:a2457e6c6251b6521782866f52af4dfa30a29bbc930689e2e8fd3a39f10ecc85
-generated: "2026-03-06T23:16:59.890898+03:00"
+- name: superset
+  repository: https://apache.github.io/superset
+  version: 0.12.8
+digest: sha256:2287f56bcac634eb6dd2d3e9f5564621854fcec91b2207391e003887f4ea274d
+generated: "2026-06-02T00:45:24.0936+03:00"

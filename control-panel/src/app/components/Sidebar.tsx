@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useLocale } from "../locale-provider";
 import {
     LayoutDashboard, Database, Network, Code2,
-    LogOut, ChevronDown, Globe
+    LogOut, ChevronDown, Globe, BarChart3
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -80,6 +80,15 @@ export default function Sidebar() {
                     >
                         <LayoutDashboard className="w-4 h-4" />
                         <span>Apache Airflow</span>
+                    </a>
+                    <a
+                        href="http://superset.aetherlake.local"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="sidebar-link"
+                    >
+                        <BarChart3 className="w-4 h-4" />
+                        <span>Apache Superset</span>
                     </a>
                 </div>
             </nav>

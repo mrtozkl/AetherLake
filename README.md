@@ -10,8 +10,11 @@
 <h1 align="center">⚡ AetherLake: Open-Source Data Lakehouse on Kubernetes</h1>
 
 <p align="center">
-  <strong>Open-source Data Lakehouse platform on Kubernetes.</strong><br/>
-  Deploy a production-grade, fully integrated data stack with a single <code>helm install</code>.
+  # 🌊 AetherLake
+
+  ![AetherLake Dashboard](assets/dashboard.png)
+
+  AetherLake is a Kubernetes-native open-source Data Lakehouse platform. It orchestrates storage, query, vector search, and AI orchestration engines to build a unified modern data stack. with a single <code>helm install</code>.
 </p>
 
 <p align="center">
@@ -112,33 +115,15 @@ git clone https://github.com/mrtozkl/AetherLake.git
 cd AetherLake
 ```
 
-### 2. Create namespace
+### 2. Run the installer
+
+The installation script automates namespace creation, credential generation, and Helm deployments:
 
 ```bash
-kubectl create namespace aetherlake
+./install.sh
 ```
 
-### 3. Deploy the Security Stack (Keycloak)
-
-```bash
-cd helm-charts/security-stack
-helm dependency update
-helm install security-stack . -n aetherlake
-```
-
-### 4. Deploy the Core Data Stack
-
-```bash
-cd helm-charts/core-data-stack
-helm dependency update
-helm install core-data-stack . -n aetherlake
-```
-
-### 5. Apply Ingress rules
-
-```bash
-kubectl apply -f aetherlake-ingress.yaml
-```
+This will deploy Keycloak, MinIO, Trino, Polaris, and all other configured components into your local cluster.
 
 ### 6. Configure local DNS
 
@@ -170,6 +155,8 @@ Default credentials: `admin` / `admin`
 ---
 
 ## 🎛️ Control Panel
+
+![Dashboard Screenshot](assets/dashboard.png)
 
 The Control Panel is a **Next.js 16** web application that serves as the unified management interface for the entire platform.
 
