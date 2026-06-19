@@ -76,6 +76,7 @@ keycloak:
               "clientId": "aetherlake-client",
               "enabled": true,
               "publicClient": false,
+              "secret": "${ENV:CONTROL_PANEL_CLIENT_SECRET}",
               "redirectUris": ["*"],
               "protocol": "openid-connect"
             },
@@ -83,6 +84,7 @@ keycloak:
               "clientId": "trino",
               "enabled": true,
               "publicClient": false,
+              "secret": "${ENV:TRINO_CLIENT_SECRET}",
               "redirectUris": ["*"],
               "protocol": "openid-connect",
               "protocolMappers": [
@@ -128,6 +130,7 @@ keycloak:
               "clientId": "polaris",
               "enabled": true,
               "publicClient": false,
+              "secret": "${ENV:POLARIS_OIDC_SECRET}",
               "redirectUris": ["*"],
               "protocol": "openid-connect",
               "protocolMappers": [
