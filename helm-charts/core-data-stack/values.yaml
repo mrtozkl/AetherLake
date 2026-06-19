@@ -15,9 +15,13 @@ minio:
   volumesPerServer: 1
   storageSize: "20Gi"
   storageClassName: "hostpath"
-  # Root credentials (will be written to config.env secret)
+  # Root credentials written to the config.env secret. These are overridden at
+  # install time (install.sh --set minio.rootUser/rootPassword=...) with the same
+  # randomized values stored in the credentials secret under minio-root-user /
+  # minio-root-password, so Trino, Milvus and Polaris authenticate successfully.
+  # The values below are dev placeholders only.
   rootUser: "minioadmin"
-  rootPassword: "minioadmin"
+  rootPassword: "CHANGE_ME"
   # Buckets to create on initialization
   initBuckets:
     - "lakehouse"

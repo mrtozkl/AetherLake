@@ -125,9 +125,12 @@ fi
 echo "📊 Deploying Core Data Stack..."
 cd helm-charts/core-data-stack
 helm dependency update
-# Pass the MinIO OIDC client secret so the value baked into the tenant config
-# matches the secret provisioned for the `minio` Keycloak client.
+# Pass the MinIO root credentials and OIDC client secret so the values baked into
+# the tenant config match the cluster secret that Trino/Milvus/Polaris read and
+# the secret provisioned for the `minio` Keycloak client.
 helm upgrade --install core-data-stack . -n aetherlake \
+    --set minio.rootUser="$MINIO_ROOT_USER" \
+    --set minio.rootPassword="$MINIO_ROOT_PASSWORD" \
     --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET"
 cd ../..
 
