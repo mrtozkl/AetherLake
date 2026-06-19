@@ -103,12 +103,21 @@ airflow:
   redis:
     nameOverride: airflow-redis
   web:
-    # Generic SSO / OIDC configuration will map to the Keycloak client
+    # Keycloak OIDC SSO. The webserver_config.py in this ConfigMap wires Flask
+    # AppBuilder to the `airflow` Keycloak client and maps realm roles to Airflow
+    # roles (see templates/airflow-webserver-config.yaml).
+    existingConfigmap: airflow-webserver-config
     extraEnvVars:
-      - name: AIRFLOW__WEBSERVER__AUTHENTICATE
-        value: "True"
-      - name: AIRFLOW__WEBSERVER__AUTH_BACKEND
-        value: "airflow.providers.fab.auth_manager.api.auth.backend.default"
+      # Client secret for the `airflow` Keycloak client, consumed by
+      # webserver_config.py. Matches the value Keycloak is provisioned with.
+      - name: AIRFLOW_OIDC_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: aetherlake-credentials
+            key: airflow-oidc-secret
+      # Base URL the browser uses to reach Keycloak; must match the token issuer.
+      - name: KEYCLOAK_BASE_URL
+        value: "http://keycloak.aetherlake.local"
 
 # 6. Milvus (Vector Database)
 milvus:
