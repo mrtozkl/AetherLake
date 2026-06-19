@@ -78,8 +78,13 @@ trino:
       connector.name=iceberg
       iceberg.catalog.type=rest
       iceberg.rest-catalog.uri=http://core-data-stack-polaris:8181/api/catalog
+      iceberg.rest-catalog.warehouse=lakehouse_catalog
       iceberg.rest-catalog.security=OAUTH2
       iceberg.rest-catalog.oauth2.credential=${ENV:POLARIS_CREDENTIAL}
+      # NOTE: Polaris requires the OAuth2 scope PRINCIPAL_ROLE:ALL, but Trino 448
+      # does not expose iceberg.rest-catalog.oauth2.scope (rejects it as unused).
+      # Until Trino is upgraded to a version that supports the scope property,
+      # the iceberg catalog cannot complete the Polaris OAuth2 handshake.
       fs.native-s3.enabled=true
       s3.endpoint=http://minio-hl:9000
       s3.region=us-east-1
