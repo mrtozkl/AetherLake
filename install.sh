@@ -23,41 +23,53 @@ kubectl create namespace aetherlake --dry-run=client -o yaml | kubectl apply -f 
 # 3. Create Secrets
 echo "🔐 Configuring credentials..."
 
-# Check if open-lake-credentials exists
-if ! kubectl get secret open-lake-credentials -n aetherlake &> /dev/null; then
-    echo "   Creating open-lake-credentials..."
-    kubectl create secret generic open-lake-credentials -n aetherlake \
-        --from-literal=minio-root-user=admin \
-        --from-literal=minio-root-password=password \
-        --from-literal=trino-oidc-secret=trino-secret-key \
-        --from-literal=airflow-oidc-secret=airflow-secret-key \
-        --from-literal=polaris-oidc-secret=polaris-secret-key \
-        --from-literal=milvus-oidc-secret=milvus-secret-key \
-        --from-literal=control-panel-oidc-secret=control-panel-secret-key \
-        --from-literal=superset-oidc-secret=superset-secret-key \
-        --from-literal=keycloak-admin-password=super-secure-admin-password \
-        --from-literal=ldap-bind-password=ldap-service-password
-else
-    echo "   open-lake-credentials secret already exists. Skipping."
-fi
+# Generate a URL-safe random secret value.
+gen_secret() {
+    LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32
+}
 
-# Create aetherlake-credentials alias
-if ! kubectl get secret aetherlake-credentials -n aetherlake &> /dev/null; then
-    echo "   Creating aetherlake-credentials (alias)..."
-    kubectl create secret generic aetherlake-credentials -n aetherlake \
-        --from-literal=minio-root-user=admin \
-        --from-literal=minio-root-password=password \
-        --from-literal=trino-oidc-secret=trino-secret-key \
-        --from-literal=airflow-oidc-secret=airflow-secret-key \
-        --from-literal=polaris-oidc-secret=polaris-secret-key \
-        --from-literal=milvus-oidc-secret=milvus-secret-key \
-        --from-literal=control-panel-oidc-secret=control-panel-secret-key \
-        --from-literal=superset-oidc-secret=superset-secret-key \
-        --from-literal=keycloak-admin-password=super-secure-admin-password \
-        --from-literal=ldap-bind-password=ldap-service-password
-else
-    echo "   aetherlake-credentials secret already exists. Skipping."
-fi
+# Generate the credential values ONCE. The security-stack (Keycloak) and the
+# core-data-stack read these same OIDC keys from two differently-named secrets,
+# so the values must be identical across both — otherwise SSO breaks. Values are
+# randomized per install so the repository never ships real passwords.
+MINIO_ROOT_USER="${MINIO_ROOT_USER:-admin}"
+MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-$(gen_secret)}"
+KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-$(gen_secret)}"
+TRINO_OIDC_SECRET="$(gen_secret)"
+AIRFLOW_OIDC_SECRET="$(gen_secret)"
+POLARIS_OIDC_SECRET="$(gen_secret)"
+MILVUS_OIDC_SECRET="$(gen_secret)"
+CONTROL_PANEL_OIDC_SECRET="$(gen_secret)"
+SUPERSET_OIDC_SECRET="$(gen_secret)"
+LDAP_BIND_PASSWORD="$(gen_secret)"
+
+# Create a credentials secret from the shared values above. Pass the name as $1.
+create_credentials_secret() {
+    local secret_name="$1"
+    if kubectl get secret "$secret_name" -n aetherlake &> /dev/null; then
+        echo "   $secret_name secret already exists. Skipping."
+        return
+    fi
+    echo "   Creating $secret_name..."
+    kubectl create secret generic "$secret_name" -n aetherlake \
+        --from-literal=minio-root-user="$MINIO_ROOT_USER" \
+        --from-literal=minio-root-password="$MINIO_ROOT_PASSWORD" \
+        --from-literal=trino-oidc-secret="$TRINO_OIDC_SECRET" \
+        --from-literal=airflow-oidc-secret="$AIRFLOW_OIDC_SECRET" \
+        --from-literal=polaris-oidc-secret="$POLARIS_OIDC_SECRET" \
+        --from-literal=milvus-oidc-secret="$MILVUS_OIDC_SECRET" \
+        --from-literal=control-panel-oidc-secret="$CONTROL_PANEL_OIDC_SECRET" \
+        --from-literal=superset-oidc-secret="$SUPERSET_OIDC_SECRET" \
+        --from-literal=keycloak-admin-password="$KEYCLOAK_ADMIN_PASSWORD" \
+        --from-literal=ldap-bind-password="$LDAP_BIND_PASSWORD"
+}
+
+# Primary secret plus the aetherlake-credentials alias referenced by the charts.
+create_credentials_secret open-lake-credentials
+create_credentials_secret aetherlake-credentials
+
+echo "   ℹ️  Credentials were randomly generated. Retrieve them with:"
+echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.keycloak-admin-password}' | base64 -d"
 
 # 4. Deploy Security Stack
 echo "🛡️ Deploying Security Stack (Keycloak)..."

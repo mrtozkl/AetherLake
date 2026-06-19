@@ -1,4 +1,0 @@
-image: "apache/airflow:latest"
-service:
-  type: ClusterIP
-  port: 8080

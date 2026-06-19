@@ -20,6 +20,11 @@ node_modules
 # production
 /build
 
+# build artifacts
+mcp-server/dist
+docs/.vitepress/cache
+docs/.vitepress/dist
+
 # misc
 .DS_Store
 *.pem

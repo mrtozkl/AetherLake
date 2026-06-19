@@ -39,9 +39,21 @@ export async function POST(req: NextRequest) {
         let errorMsg = null;
         let isDone = false;
 
+        // Bound the Trino polling loop so a long-running or stuck query can't pin
+        // the request open indefinitely. ~5 min at the 300ms inter-poll delay.
+        const MAX_POLLS = 1000;
+        let polls = 0;
+
         let response = await fetch(targetUrl, config);
 
         while (!isDone) {
+            if (++polls > MAX_POLLS) {
+                return NextResponse.json(
+                    { error: "Query timed out", details: `Exceeded ${MAX_POLLS} Trino result polls` },
+                    { status: 504 }
+                );
+            }
+
             if (!response.ok) {
                 const errText = await response.text();
                 return NextResponse.json({ error: `Trino Request Failed: ${response.statusText}`, details: errText }, { status: response.status });

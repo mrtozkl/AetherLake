@@ -25,7 +25,8 @@ Add the following to your `claude_desktop_config.json`:
         "AETHERLAKE_NAMESPACE": "aetherlake",
         "TRINO_URL": "http://trino.aetherlake.local",
         "POLARIS_URL": "http://polaris.aetherlake.local",
-        "AIRFLOW_URL": "http://airflow.aetherlake.local"
+        "AIRFLOW_URL": "http://airflow.aetherlake.local",
+        "AIRFLOW_AUTH": "admin:your-airflow-password"
       }
     }
   }
@@ -33,3 +34,18 @@ Add the following to your `claude_desktop_config.json`:
 ```
 
 Make sure to run `npm install` and `npm run build` in the `mcp-server` directory first.
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AETHERLAKE_NAMESPACE` | `aetherlake` | Kubernetes namespace to operate against |
+| `TRINO_URL` | `http://trino.aetherlake.local` | Trino coordinator base URL |
+| `POLARIS_URL` | `http://polaris.aetherlake.local` | Apache Polaris REST catalog base URL |
+| `AIRFLOW_URL` | `http://airflow.aetherlake.local` | Airflow webserver base URL |
+| `AIRFLOW_AUTH` | `admin:admin` | Airflow basic-auth `user:password`, used for DAG operations |
+
+> [!WARNING]
+> `AIRFLOW_AUTH` defaults to `admin:admin` for local development only. Set it to
+> your real Airflow credentials before using the MCP server against any
+> non-local deployment.

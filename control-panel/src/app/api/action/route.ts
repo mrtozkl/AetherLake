@@ -28,11 +28,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const isAdmin = Boolean(
-            session.user?.name === "admin" ||
-            (session.user as any)?.role === "data-admin" ||
-            session.user?.email?.includes("admin")
-        );
+        const isAdmin = (session.user as any)?.role === "data-admin";
 
         if (!isAdmin) {
             return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
@@ -50,26 +46,25 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Service deployment mapping not found' }, { status: 404 });
         }
 
-        // Trigger a rollout restart by patching the deployment template annotations
-        const patch = [
-            {
-                op: 'add',
-                path: '/spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt',
-                value: new Date().toISOString(),
+        // Trigger a rollout restart the same way `kubectl rollout restart` does:
+        // a strategic-merge patch that sets a restartedAt annotation on the pod
+        // template. Using a merge patch (instead of a JSON-patch `add`) means the
+        // annotations map is created automatically if it doesn't already exist.
+        const patch = {
+            spec: {
+                template: {
+                    metadata: {
+                        annotations: {
+                            'kubectl.kubernetes.io/restartedAt': new Date().toISOString(),
+                        },
+                    },
+                },
             },
-        ];
+        };
 
-        const options = { headers: { 'Content-type': 'application/json-patch+json' } };
-
-        await (k8sApi.patchNamespacedDeployment as any)(
-            deploymentName,
-            NAMESPACE,
-            patch,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            options
+        await k8sApi.patchNamespacedDeployment(
+            { name: deploymentName, namespace: NAMESPACE, body: patch },
+            k8s.setHeaderOptions('Content-Type', k8s.PatchStrategy.StrategicMergePatch)
         );
 
         return NextResponse.json({ success: true, message: `${serviceName} restart initiated.` });

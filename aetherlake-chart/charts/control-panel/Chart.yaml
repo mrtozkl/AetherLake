@@ -1,5 +1,0 @@
-apiVersion: v2
-name: control-panel
-description: Unified Control Panel Next.js Application
-type: application
-version: 0.1.0

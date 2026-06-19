@@ -2,17 +2,38 @@ import NextAuth from "next-auth"
 import KeycloakProvider from "next-auth/providers/keycloak"
 import CredentialsProvider from "next-auth/providers/credentials"
 
-export const authOptions = {
-    providers: [
-        // Default admin credentials for development / when Keycloak is unavailable
+const isProduction = process.env.NODE_ENV === "production"
+
+// In production every secret must come from the environment. Falling back to a
+// hardcoded value would ship a publicly-known secret, so fail fast instead.
+function requireInProduction(value: string | undefined, name: string, devFallback: string): string {
+    if (value) return value
+    if (isProduction) {
+        throw new Error(`${name} must be set in production`)
+    }
+    return devFallback
+}
+
+const nextAuthSecret = requireInProduction(
+    process.env.NEXTAUTH_SECRET,
+    "NEXTAUTH_SECRET",
+    "insecure-development-only-secret"
+)
+
+const providers: any[] = []
+
+// Local username/password admin account. Only enabled outside production so a
+// well-known credential can never be used against a real deployment. Keycloak
+// SSO is the only supported auth path in production.
+if (!isProduction) {
+    providers.push(
         CredentialsProvider({
-            name: "AetherLake Admin",
+            name: "AetherLake Admin (dev)",
             credentials: {
                 username: { label: "Username", type: "text", placeholder: "admin" },
                 password: { label: "Password", type: "password" }
             },
             async authorize(credentials) {
-                // Default admin account
                 const validUsers = [
                     { id: "1", name: "admin", email: "admin@aetherlake.local", role: "data-admin" },
                     { id: "2", name: "user", email: "user@aetherlake.local", role: "data-scientist" },
@@ -23,15 +44,26 @@ export const authOptions = {
                 if (user) return user;
                 return null;
             }
-        }),
-        // Keycloak SSO (active when realm is provisioned)
-        KeycloakProvider({
-            clientId: process.env.KEYCLOAK_CLIENT_ID || "aetherlake-client",
-            clientSecret: process.env.KEYCLOAK_CLIENT_SECRET || "SUPER_SECRET_KEYCLOAK_PASSWORD",
-            issuer: `${process.env.KEYCLOAK_URL || "http://keycloak.aetherlake.local"}/realms/aetherlake`
         })
-    ],
-    secret: process.env.NEXTAUTH_SECRET || "super-secret-aetherlake-development-key",
+    )
+}
+
+// Keycloak SSO (active when realm is provisioned)
+providers.push(
+    KeycloakProvider({
+        clientId: process.env.KEYCLOAK_CLIENT_ID || "aetherlake-client",
+        clientSecret: requireInProduction(
+            process.env.KEYCLOAK_CLIENT_SECRET,
+            "KEYCLOAK_CLIENT_SECRET",
+            "dev-keycloak-secret"
+        ),
+        issuer: `${process.env.KEYCLOAK_URL || "http://keycloak.aetherlake.local"}/realms/aetherlake`
+    })
+)
+
+export const authOptions = {
+    providers,
+    secret: nextAuthSecret,
     callbacks: {
         async jwt({ token, account, user }: any) {
             if (account) {
