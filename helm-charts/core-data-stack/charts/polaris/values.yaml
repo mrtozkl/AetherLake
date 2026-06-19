@@ -20,5 +20,5 @@ resources:
 initCatalog:
   enabled: true
   name: "lakehouse_catalog"
-  s3Endpoint: "http://minio-hl.open-lake.svc.cluster.local:9000"
+  s3Endpoint: "http://minio-hl.aetherlake.svc.cluster.local:9000"
   s3Bucket: "lakehouse"

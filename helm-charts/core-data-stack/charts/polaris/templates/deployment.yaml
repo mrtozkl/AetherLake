@@ -40,9 +40,9 @@ spec:
             - name: POLARIS_AUTHENTICATOR_TYPE
               value: "jwt"
             - name: SMALLRYE_JWT_VERIFY_ISSUER
-              value: "http://keycloak.open-lake.local/realms/open-lake"
+              value: "http://keycloak.aetherlake.local/realms/aetherlake"
             - name: SMALLRYE_JWT_VERIFY_JWKS_LOCATION
-              value: "http://security-stack-keycloak:80/realms/open-lake/protocol/openid-connect/certs"
+              value: "http://security-stack-keycloak:80/realms/aetherlake/protocol/openid-connect/certs"
             - name: POLARIS_REALM_CONTEXT_RESOLVER_TYPE
               value: "default"
             - name: POLARIS_REALM_CONTEXT_RESOLVER_DEFAULT_REALM

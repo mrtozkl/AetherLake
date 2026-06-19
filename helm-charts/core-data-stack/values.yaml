@@ -24,12 +24,12 @@ minio:
     - "milvus-vectors"
   # Keycloak OIDC SSO Config
   oidc:
-    configUrl: "http://keycloak.open-lake.local/realms/open-lake/.well-known/openid-configuration"
+    configUrl: "http://keycloak.aetherlake.local/realms/aetherlake/.well-known/openid-configuration"
     clientId: "minio"
     clientSecret: "minio-oidc-secret-123"
     claimName: "policy"
     scopes: "openid,profile,email"
-    keycloakRealm: "open-lake"
+    keycloakRealm: "aetherlake"
     keycloakAdminUrl: "http://security-stack-keycloak/"
 
 # 2. Apache Polaris Custom Chart (Iceberg REST Catalog)
