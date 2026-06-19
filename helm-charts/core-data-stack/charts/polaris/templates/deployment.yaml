@@ -23,8 +23,20 @@ spec:
               containerPort: 8181
               protocol: TCP
           env:
+            # Root client credentials are sourced from the cluster secret so they
+            # are randomized per install rather than shipped in the chart.
+            - name: POLARIS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: polaris-client-id
+            - name: POLARIS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: polaris-client-secret
             - name: POLARIS_BOOTSTRAP_CREDENTIALS
-              value: "POLARIS,open-lake-admin,open-lake-secret"
+              value: "POLARIS,$(POLARIS_CLIENT_ID),$(POLARIS_CLIENT_SECRET)"
             - name: POLARIS_AUTHENTICATOR_TYPE
               value: "jwt"
             - name: SMALLRYE_JWT_VERIFY_ISSUER

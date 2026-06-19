@@ -51,3 +51,6 @@ next-env.d.ts
 
 # Antigravity agent state and cache directory
 .antigravity/
+
+# Packaged local Polaris subchart (rebuilt by helm dependency update)
+helm-charts/core-data-stack/charts/polaris-*.tgz

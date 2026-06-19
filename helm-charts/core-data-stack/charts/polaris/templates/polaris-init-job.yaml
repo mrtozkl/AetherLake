@@ -28,12 +28,18 @@ spec:
           env:
             - name: POLARIS_URL
               value: "http://{{ .Release.Name }}-polaris:{{ .Values.service.port }}"
-            # We use the bootstrap credentials defined in the deployment (hardcoded there as POLARIS,open-lake-admin,open-lake-secret)
-            # In a real production setup, these should come from a secret.
+            # Bootstrap credentials, sourced from the same secret the Polaris
+            # deployment uses so init authenticates with the randomized values.
             - name: CLIENT_ID
-              value: "open-lake-admin"
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: polaris-client-id
             - name: CLIENT_SECRET
-              value: "open-lake-secret"
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: polaris-client-secret
             - name: CATALOG_NAME
               value: {{ .Values.initCatalog.name | quote }}
             - name: MINIO_ENDPOINT

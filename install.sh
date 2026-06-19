@@ -42,6 +42,11 @@ MILVUS_OIDC_SECRET="$(gen_secret)"
 CONTROL_PANEL_OIDC_SECRET="$(gen_secret)"
 SUPERSET_OIDC_SECRET="$(gen_secret)"
 LDAP_BIND_PASSWORD="$(gen_secret)"
+# Apache Polaris root (bootstrap) client credential. The deployment and init job
+# read id/secret separately; Trino reads the combined "id:secret" form.
+POLARIS_CLIENT_ID="${POLARIS_CLIENT_ID:-open-lake-admin}"
+POLARIS_CLIENT_SECRET="$(gen_secret)"
+POLARIS_CREDENTIAL="${POLARIS_CLIENT_ID}:${POLARIS_CLIENT_SECRET}"
 
 # Create a credentials secret from the shared values above. Pass the name as $1.
 create_credentials_secret() {
@@ -61,12 +66,27 @@ create_credentials_secret() {
         --from-literal=control-panel-oidc-secret="$CONTROL_PANEL_OIDC_SECRET" \
         --from-literal=superset-oidc-secret="$SUPERSET_OIDC_SECRET" \
         --from-literal=keycloak-admin-password="$KEYCLOAK_ADMIN_PASSWORD" \
-        --from-literal=ldap-bind-password="$LDAP_BIND_PASSWORD"
+        --from-literal=ldap-bind-password="$LDAP_BIND_PASSWORD" \
+        --from-literal=polaris-client-id="$POLARIS_CLIENT_ID" \
+        --from-literal=polaris-client-secret="$POLARIS_CLIENT_SECRET" \
+        --from-literal=polaris-credential="$POLARIS_CREDENTIAL"
 }
 
 # Primary secret plus the aetherlake-credentials alias referenced by the charts.
 create_credentials_secret open-lake-credentials
 create_credentials_secret aetherlake-credentials
+
+# Dedicated Airflow secret consumed by the Bitnami chart via auth.existingSecret.
+# The Fernet key must be a 32-byte url-safe base64 value.
+if ! kubectl get secret airflow-credentials -n aetherlake &> /dev/null; then
+    echo "   Creating airflow-credentials..."
+    kubectl create secret generic airflow-credentials -n aetherlake \
+        --from-literal=airflow-password="${AIRFLOW_ADMIN_PASSWORD:-$(gen_secret)}" \
+        --from-literal=airflow-fernet-key="$(openssl rand -base64 32 | tr '+/' '-_' | head -c 44)" \
+        --from-literal=airflow-secret-key="$(gen_secret)"
+else
+    echo "   airflow-credentials secret already exists. Skipping."
+fi
 
 echo "   ℹ️  Credentials were randomly generated. Retrieve them with:"
 echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.keycloak-admin-password}' | base64 -d"
@@ -82,7 +102,24 @@ cd ../..
 echo "⏳ Waiting for Keycloak to be ready (this may take a few minutes)..."
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=keycloak -n aetherlake --timeout=300s || true
 
-# 5. Deploy Core Data Stack
+# 5a. Ensure the MinIO Operator is present. Object storage is provisioned through
+# a MinIO `Tenant` CRD (helm-charts/core-data-stack/templates/minio-tenant.yaml);
+# without the operator running, that Tenant is never reconciled and the whole
+# lakehouse has no storage. Install it if the CRD is missing.
+if ! kubectl get crd tenants.minio.min.io &> /dev/null; then
+    echo "🪣 MinIO Operator not found. Installing it..."
+    helm repo add minio-operator https://operator.min.io 2>/dev/null || true
+    helm repo update minio-operator
+    helm upgrade --install minio-operator minio-operator/operator \
+        --namespace minio-operator --create-namespace
+    echo "⏳ Waiting for MinIO Operator to be ready..."
+    kubectl wait --for=condition=available deployment -l app.kubernetes.io/name=operator \
+        -n minio-operator --timeout=300s || true
+else
+    echo "🪣 MinIO Operator already present. Skipping."
+fi
+
+# 5b. Deploy Core Data Stack
 echo "📊 Deploying Core Data Stack..."
 cd helm-charts/core-data-stack
 helm dependency update

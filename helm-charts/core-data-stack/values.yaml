@@ -59,13 +59,20 @@ trino:
         secretKeyRef:
           name: open-lake-credentials
           key: minio-root-password
+    # Polaris OAuth2 client credential (id:secret), injected from the secret and
+    # referenced below via ${ENV:...} so it is not hardcoded in the catalog file.
+    - name: POLARIS_CREDENTIAL
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: polaris-credential
   additionalCatalogs:
     iceberg: |-
       connector.name=iceberg
       iceberg.catalog.type=rest
       iceberg.rest-catalog.uri=http://core-data-stack-polaris:8181/api/catalog
       iceberg.rest-catalog.security=OAUTH2
-      iceberg.rest-catalog.oauth2.credential=open-lake-admin:open-lake-secret
+      iceberg.rest-catalog.oauth2.credential=${ENV:POLARIS_CREDENTIAL}
       fs.native-s3.enabled=true
       s3.endpoint=http://minio-hl:9000
       s3.region=us-east-1
@@ -79,9 +86,22 @@ spark-operator:
   sparkJobNamespace: "default"
 
 # 5. Apache Airflow (Orchestrator)
-# Temporarily disabling Airflow as its embedded common templates are polluting MinIO's global scope.
 airflow:
-  enabled: false
+  enabled: true
+  # Credentials (admin password, Fernet key, Flask secret key) come from the
+  # `airflow-credentials` secret created by install.sh — see auth key names in
+  # the Bitnami chart: airflow-password / airflow-fernet-key / airflow-secret-key.
+  auth:
+    username: admin
+    existingSecret: airflow-credentials
+  loadExamples: false
+  # Isolate Airflow's bundled PostgreSQL and Redis. Without these overrides their
+  # subcharts render as `core-data-stack-postgresql` / `core-data-stack-redis`,
+  # colliding with the instances Superset already deploys under the same release.
+  postgresql:
+    nameOverride: airflow-postgresql
+  redis:
+    nameOverride: airflow-redis
   web:
     # Generic SSO / OIDC configuration will map to the Keycloak client
     extraEnvVars:
@@ -97,7 +117,12 @@ milvus:
     enabled: false # Use standalone for local cluster to save resources
   standalone:
     enabled: true
-  
+
+  # Attu web UI. The `milvus.aetherlake.local` ingress route targets the
+  # core-data-stack-milvus-attu service this creates.
+  attu:
+    enabled: true
+
   # Disable embedded MinIO to prevent Bitnami common template clashes
   # Instead, point it to the primary MinIO instance we deployed in step 1
   minio:
