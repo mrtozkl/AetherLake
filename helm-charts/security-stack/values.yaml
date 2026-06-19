@@ -38,7 +38,7 @@ keycloak:
           "realm": "aetherlake",
           "enabled": true,
           "attributes": {
-            "frontendUrl": "http://keycloak.${global.domain}/auth/"
+            "frontendUrl": "http://keycloak.aetherlake.local"
           },
           "users": [
             {
@@ -76,7 +76,7 @@ keycloak:
               "clientId": "aetherlake-client",
               "enabled": true,
               "publicClient": false,
-              "secret": "${ENV:CONTROL_PANEL_CLIENT_SECRET}",
+              "secret": "$(env:CONTROL_PANEL_CLIENT_SECRET)",
               "redirectUris": ["*"],
               "protocol": "openid-connect"
             },
@@ -84,7 +84,7 @@ keycloak:
               "clientId": "trino",
               "enabled": true,
               "publicClient": false,
-              "secret": "${ENV:TRINO_CLIENT_SECRET}",
+              "secret": "$(env:TRINO_CLIENT_SECRET)",
               "redirectUris": ["*"],
               "protocol": "openid-connect",
               "protocolMappers": [
@@ -107,7 +107,7 @@ keycloak:
               "clientId": "airflow",
               "enabled": true,
               "publicClient": false,
-              "secret": "${ENV:AIRFLOW_CLIENT_SECRET}",
+              "secret": "$(env:AIRFLOW_CLIENT_SECRET)",
               "redirectUris": ["*"],
               "protocol": "openid-connect",
               "protocolMappers": [
@@ -130,7 +130,7 @@ keycloak:
               "clientId": "polaris",
               "enabled": true,
               "publicClient": false,
-              "secret": "${ENV:POLARIS_OIDC_SECRET}",
+              "secret": "$(env:POLARIS_OIDC_SECRET)",
               "redirectUris": ["*"],
               "protocol": "openid-connect",
               "protocolMappers": [
@@ -180,7 +180,7 @@ keycloak:
               "publicClient": false,
               "serviceAccountsEnabled": true,
               "directAccessGrantsEnabled": true,
-              "secret": "${ENV:MINIO_OIDC_SECRET}",
+              "secret": "$(env:MINIO_OIDC_SECRET)",
               "redirectUris": ["*"],
               "protocol": "openid-connect",
               "protocolMappers": [
@@ -203,7 +203,7 @@ keycloak:
               "clientId": "superset",
               "enabled": true,
               "publicClient": false,
-              "secret": "${ENV:SUPERSET_OIDC_SECRET}",
+              "secret": "$(env:SUPERSET_OIDC_SECRET)",
               "redirectUris": ["*"],
               "protocol": "openid-connect"
             }
@@ -211,6 +211,12 @@ keycloak:
         }
     # Pass secrets into the config CLI container to interpolate inside the JSON directly from the Unified K8s Secret
     extraEnvVars:
+      # keycloak-config-cli disables variable substitution by default; enable it
+      # so the $(env:...) placeholders in the realm JSON above are resolved from
+      # the env vars below. (It uses $(...) — not ${...} — to avoid clashing with
+      # Keycloak's own ${...} realm placeholders.)
+      - name: IMPORT_VARSUBSTITUTION_ENABLED
+        value: "true"
       - name: LDAP_BIND_CREDENTIAL
         valueFrom:
           secretKeyRef:

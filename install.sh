@@ -41,6 +41,7 @@ POLARIS_OIDC_SECRET="$(gen_secret)"
 MILVUS_OIDC_SECRET="$(gen_secret)"
 CONTROL_PANEL_OIDC_SECRET="$(gen_secret)"
 SUPERSET_OIDC_SECRET="$(gen_secret)"
+MINIO_OIDC_SECRET="$(gen_secret)"
 LDAP_BIND_PASSWORD="$(gen_secret)"
 # Apache Polaris root (bootstrap) client credential. The deployment and init job
 # read id/secret separately; Trino reads the combined "id:secret" form.
@@ -65,6 +66,7 @@ create_credentials_secret() {
         --from-literal=milvus-oidc-secret="$MILVUS_OIDC_SECRET" \
         --from-literal=control-panel-oidc-secret="$CONTROL_PANEL_OIDC_SECRET" \
         --from-literal=superset-oidc-secret="$SUPERSET_OIDC_SECRET" \
+        --from-literal=minio-oidc-secret="$MINIO_OIDC_SECRET" \
         --from-literal=keycloak-admin-password="$KEYCLOAK_ADMIN_PASSWORD" \
         --from-literal=ldap-bind-password="$LDAP_BIND_PASSWORD" \
         --from-literal=polaris-client-id="$POLARIS_CLIENT_ID" \
@@ -123,7 +125,10 @@ fi
 echo "📊 Deploying Core Data Stack..."
 cd helm-charts/core-data-stack
 helm dependency update
-helm upgrade --install core-data-stack . -n aetherlake
+# Pass the MinIO OIDC client secret so the value baked into the tenant config
+# matches the secret provisioned for the `minio` Keycloak client.
+helm upgrade --install core-data-stack . -n aetherlake \
+    --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET"
 cd ../..
 
 # 6. Apply Ingress

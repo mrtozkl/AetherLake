@@ -26,7 +26,10 @@ minio:
   oidc:
     configUrl: "http://keycloak.aetherlake.local/realms/aetherlake/.well-known/openid-configuration"
     clientId: "minio"
-    clientSecret: "minio-oidc-secret-123"
+    # Overridden at install time (install.sh --set minio.oidc.clientSecret=...) so
+    # it matches the randomized secret of the `minio` Keycloak client. The default
+    # below is a dev placeholder only.
+    clientSecret: "CHANGE_ME"
     claimName: "policy"
     scopes: "openid,profile,email"
     keycloakRealm: "aetherlake"
