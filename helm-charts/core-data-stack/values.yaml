@@ -160,15 +160,48 @@ milvus:
 # 7. Apache Superset Configuration
 superset:
   enabled: true
-  
-  # Inject Keycloak OIDC client secret from the unified secret
+
+  # Use the shared, upstream-maintained PostgreSQL and Redis (templates/
+  # shared-datastores.yaml) instead of the retired Bitnami subchart images.
+  postgresql:
+    enabled: false
+  redis:
+    enabled: false
+  supersetNode:
+    connections:
+      db_host: aetherlake-postgres
+      db_port: "5432"
+      db_user: superset
+      db_name: superset
+      # Placeholder; the real password is injected via extraEnvRaw (DB_PASS)
+      # below from the open-lake-credentials secret and overrides this.
+      db_pass: overridden-by-secret
+      redis_host: aetherlake-redis
+      redis_port: "6379"
+      # Non-empty so the chart wires Redis auth; real value comes from
+      # extraEnvRaw (REDIS_PASSWORD) below.
+      redis_password: overridden-by-secret
+
+  # Inject Keycloak OIDC client secret and the real DB/Redis passwords from the
+  # unified secret. These env entries override the placeholders the chart bakes
+  # into its env secret (env list takes precedence over envFrom).
   extraEnvRaw:
     - name: SUPERSET_OIDC_SECRET
       valueFrom:
         secretKeyRef:
           name: open-lake-credentials
           key: superset-oidc-secret
-          
+    - name: DB_PASS
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: postgres-password
+    - name: REDIS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: redis-password
+
   # Custom initialization script to import connections automatically
   init:
     initscript: |-
@@ -266,10 +299,3 @@ superset:
               return user
 
       CUSTOM_SECURITY_MANAGER = CustomSsoSecurityManager
-superset:
-  postgresql:
-    image:
-      tag: 15.6.0-debian-12-r12
-  redis:
-    image:
-      tag: 7.2.4-debian-12-r12

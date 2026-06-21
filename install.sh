@@ -43,6 +43,10 @@ CONTROL_PANEL_OIDC_SECRET="$(gen_secret)"
 SUPERSET_OIDC_SECRET="$(gen_secret)"
 MINIO_OIDC_SECRET="$(gen_secret)"
 LDAP_BIND_PASSWORD="$(gen_secret)"
+# Shared maintained datastores (official postgres/redis images) used by Keycloak,
+# Superset and Airflow instead of the retired Bitnami images.
+POSTGRES_PASSWORD="$(gen_secret)"
+REDIS_PASSWORD="$(gen_secret)"
 # Apache Polaris root (bootstrap) client credential. The deployment and init job
 # read id/secret separately; Trino reads the combined "id:secret" form.
 POLARIS_CLIENT_ID="${POLARIS_CLIENT_ID:-open-lake-admin}"
@@ -71,7 +75,9 @@ create_credentials_secret() {
         --from-literal=ldap-bind-password="$LDAP_BIND_PASSWORD" \
         --from-literal=polaris-client-id="$POLARIS_CLIENT_ID" \
         --from-literal=polaris-client-secret="$POLARIS_CLIENT_SECRET" \
-        --from-literal=polaris-credential="$POLARIS_CREDENTIAL"
+        --from-literal=polaris-credential="$POLARIS_CREDENTIAL" \
+        --from-literal=postgres-password="$POSTGRES_PASSWORD" \
+        --from-literal=redis-password="$REDIS_PASSWORD"
 }
 
 # Primary secret plus the aetherlake-credentials alias referenced by the charts.
