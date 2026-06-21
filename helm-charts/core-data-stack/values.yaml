@@ -149,6 +149,16 @@ milvus:
     enabled: false # Use standalone for local cluster to save resources
   standalone:
     enabled: true
+    # Use the embedded RocksMQ message queue. The chart default (woodpecker)
+    # makes the streaming node build an S3-backed WAL chunk manager, which
+    # crash-loops here ("Endpoint url cannot have fully qualified paths").
+    # RocksMQ keeps the WAL on the local PVC and needs no external broker.
+    messageQueue: rocksmq
+  # No external broker needed with RocksMQ.
+  pulsarv3:
+    enabled: false
+  pulsar:
+    enabled: false
 
   # Attu web UI. The `milvus.aetherlake.local` ingress route targets the
   # core-data-stack-milvus-attu service this creates.
