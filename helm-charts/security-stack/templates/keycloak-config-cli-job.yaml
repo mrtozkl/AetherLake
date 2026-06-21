@@ -1,0 +1,93 @@
+{{- if .Values.keycloak.enabled }}
+# Imports the aetherlake realm into Keycloak using the upstream
+# adorsys/keycloak-config-cli image. Variable substitution is enabled so the
+# $(env:...) client-secret placeholders in the realm JSON resolve from the
+# secret-backed env vars below. Re-runnable: config-cli is idempotent.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-keycloak-config-cli
+  labels:
+    app.kubernetes.io/name: keycloak-config-cli
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak-config-cli
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: keycloak-config-cli
+          image: {{ .Values.keycloak.configCli.image | quote }}
+          env:
+            - name: KEYCLOAK_URL
+              value: "http://{{ .Release.Name }}-keycloak"
+            - name: KEYCLOAK_USER
+              value: {{ .Values.keycloak.adminUser | quote }}
+            - name: KEYCLOAK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: keycloak-admin-password
+            - name: KEYCLOAK_AVAILABILITYCHECK_ENABLED
+              value: "true"
+            - name: KEYCLOAK_AVAILABILITYCHECK_TIMEOUT
+              value: "300s"
+            - name: IMPORT_FILES_LOCATIONS
+              value: "/config/aetherlake-realm.json"
+            # config-cli disables variable substitution by default; enable it so
+            # the realm's $(env:...) placeholders resolve from the env vars below.
+            - name: IMPORT_VARSUBSTITUTION_ENABLED
+              value: "true"
+            - name: LDAP_BIND_CREDENTIAL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: ldap-bind-password
+            - name: CONTROL_PANEL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: control-panel-oidc-secret
+            - name: TRINO_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: trino-oidc-secret
+            - name: AIRFLOW_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: airflow-oidc-secret
+            - name: MILVUS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: milvus-oidc-secret
+            - name: POLARIS_OIDC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: polaris-oidc-secret
+            - name: MINIO_OIDC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: minio-oidc-secret
+            - name: SUPERSET_OIDC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: superset-oidc-secret
+          volumeMounts:
+            - name: realm
+              mountPath: /config
+      volumes:
+        - name: realm
+          configMap:
+            name: keycloak-realm
+{{- end }}

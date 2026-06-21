@@ -2,10 +2,7 @@ apiVersion: v2
 name: security-stack
 description: Centralized Identity and SSO via Keycloak for Data Lakehouse
 type: application
-version: 0.1.0
-
-dependencies:
-  - name: keycloak
-    version: 25.2.0
-    repository: https://charts.bitnami.com/bitnami
-    condition: keycloak.enabled
+version: 0.2.0
+# Keycloak is now deployed from raw manifests using the upstream
+# quay.io/keycloak/keycloak image and the official postgres image, with realm
+# import handled by the upstream adorsys/keycloak-config-cli — no Bitnami charts.
