@@ -96,39 +96,51 @@ spark-operator:
   enabled: true
   sparkJobNamespace: "default"
 
-# 5. Apache Airflow (Orchestrator)
+# 5. Apache Airflow (Orchestrator) — official Apache chart, apache/airflow images.
 airflow:
   enabled: true
-  # Credentials (admin password, Fernet key, Flask secret key) come from the
-  # `airflow-credentials` secret created by install.sh — see auth key names in
-  # the Bitnami chart: airflow-password / airflow-fernet-key / airflow-secret-key.
-  auth:
-    username: admin
-    existingSecret: airflow-credentials
-  loadExamples: false
-  # Isolate Airflow's bundled PostgreSQL and Redis. Without these overrides their
-  # subcharts render as `core-data-stack-postgresql` / `core-data-stack-redis`,
-  # colliding with the instances Superset already deploys under the same release.
+  # Maintained upstream image (Airflow 2.10.5, last 2.x for FAB SSO).
+  defaultAirflowRepository: apache/airflow
+  defaultAirflowTag: "2.10.5"
+  # LocalExecutor: the scheduler runs tasks in-process, so no Celery workers and
+  # no Redis broker are needed — one less stateful dependency for a dev cluster.
+  executor: LocalExecutor
+  # Use the shared, upstream-maintained datastores instead of the chart's bundled
+  # Bitnami postgresql/redis subcharts.
   postgresql:
-    nameOverride: airflow-postgresql
+    enabled: false
   redis:
-    nameOverride: airflow-redis
-  web:
-    # Keycloak OIDC SSO. The webserver_config.py in this ConfigMap wires Flask
-    # AppBuilder to the `airflow` Keycloak client and maps realm roles to Airflow
-    # roles (see templates/airflow-webserver-config.yaml).
-    existingConfigmap: airflow-webserver-config
-    extraEnvVars:
-      # Client secret for the `airflow` Keycloak client, consumed by
-      # webserver_config.py. Matches the value Keycloak is provisioned with.
-      - name: AIRFLOW_OIDC_SECRET
-        valueFrom:
-          secretKeyRef:
-            name: aetherlake-credentials
-            key: airflow-oidc-secret
-      # Base URL the browser uses to reach Keycloak; must match the token issuer.
-      - name: KEYCLOAK_BASE_URL
-        value: "http://keycloak.aetherlake.local"
+    enabled: false
+  # Metadata DB connection, Fernet key and Flask secret key all come from the
+  # airflow-official secret created by install.sh (keys: connection / fernet-key
+  # / webserver-secret-key).
+  data:
+    metadataSecretName: airflow-official
+  fernetKeySecretName: airflow-official
+  webserverSecretKeySecretName: airflow-official
+  # No Celery components with LocalExecutor.
+  workers:
+    replicas: 0
+  flower:
+    enabled: false
+  # Don't load Airflow's example DAGs.
+  env:
+    - name: AIRFLOW__CORE__LOAD_EXAMPLES
+      value: "False"
+    - name: KEYCLOAK_BASE_URL
+      value: "http://keycloak.aetherlake.local"
+  # Keycloak OIDC client secret for the webserver_config.py, from the secret.
+  extraEnv: |
+    - name: AIRFLOW_OIDC_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: aetherlake-credentials
+          key: airflow-oidc-secret
+  webserver:
+    # Keycloak OIDC SSO via Flask AppBuilder. Reuses the webserver_config.py
+    # ConfigMap (templates/airflow-webserver-config.yaml), which maps realm roles
+    # to Airflow roles for the `airflow` Keycloak client.
+    webserverConfigConfigMapName: airflow-webserver-config
 
 # 6. Milvus (Vector Database)
 milvus:

@@ -84,16 +84,18 @@ create_credentials_secret() {
 create_credentials_secret open-lake-credentials
 create_credentials_secret aetherlake-credentials
 
-# Dedicated Airflow secret consumed by the Bitnami chart via auth.existingSecret.
-# The Fernet key must be a 32-byte url-safe base64 value.
-if ! kubectl get secret airflow-credentials -n aetherlake &> /dev/null; then
-    echo "   Creating airflow-credentials..."
-    kubectl create secret generic airflow-credentials -n aetherlake \
-        --from-literal=airflow-password="${AIRFLOW_ADMIN_PASSWORD:-$(gen_secret)}" \
-        --from-literal=airflow-fernet-key="$(openssl rand -base64 32 | tr '+/' '-_' | head -c 44)" \
-        --from-literal=airflow-secret-key="$(gen_secret)"
+# Airflow secret for the official Apache Airflow chart. One secret holds the
+# three keys the chart references: the metadata DB connection string (pointing at
+# the shared maintained postgres), the Fernet key (32-byte url-safe base64) and
+# the Flask webserver secret key.
+if ! kubectl get secret airflow-official -n aetherlake &> /dev/null; then
+    echo "   Creating airflow-official..."
+    kubectl create secret generic airflow-official -n aetherlake \
+        --from-literal=connection="postgresql://airflow:${POSTGRES_PASSWORD}@aetherlake-postgres:5432/airflow" \
+        --from-literal=fernet-key="$(openssl rand -base64 32 | tr '+/' '-_' | head -c 44)" \
+        --from-literal=webserver-secret-key="$(gen_secret)"
 else
-    echo "   airflow-credentials secret already exists. Skipping."
+    echo "   airflow-official secret already exists. Skipping."
 fi
 
 echo "   ℹ️  Credentials were randomly generated. Retrieve them with:"

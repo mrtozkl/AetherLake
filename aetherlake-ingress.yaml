@@ -54,7 +54,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: core-data-stack-airflow
+                name: core-data-stack-airflow-webserver
                 port:
                   number: 8080
     - host: milvus.aetherlake.local
