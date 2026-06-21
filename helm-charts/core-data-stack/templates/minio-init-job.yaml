@@ -9,9 +9,13 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
   annotations:
-    # Run this job after the minio tenant is created/upgraded
+    # Run this job after the minio tenant is created/upgraded. Negative weight so
+    # it runs BEFORE other post-install hooks (e.g. superset-init-db): Helm runs
+    # post-install hooks sequentially and aborts the whole chain on the first
+    # failure, so a slow/failing later hook must not be able to starve bucket
+    # creation. The job itself waits for the MinIO server to become ready.
     "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   template:
