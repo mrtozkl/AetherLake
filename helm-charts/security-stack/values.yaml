@@ -14,5 +14,6 @@ keycloak:
   postgres:
     image: "postgres:16-alpine"
   # Upstream realm-import tool (replaces the Bitnami keycloak-config-cli image).
+  # Tag format is <config-cli-version>-<keycloak-major>.
   configCli:
-    image: "adorsys/keycloak-config-cli:6.4.0"
+    image: "adorsys/keycloak-config-cli:6.5.1-26"

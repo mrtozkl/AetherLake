@@ -224,14 +224,20 @@ superset:
           name: open-lake-credentials
           key: redis-password
 
-  # Custom initialization script to import connections automatically
+  # Custom initialization: run the standard Superset bootstrap (DB migrate,
+  # admin user, init) then auto-import the Trino datasource. The previous script
+  # called a non-existent `superset-init` command, which failed the init job.
   init:
     initscript: |-
       #!/bin/sh
       set -e
-      superset-init --username admin --firstname Admin --lastname User --email admin@superset.com --password admin
+      superset db upgrade
+      superset fab create-admin \
+        --username admin --firstname Admin --lastname User \
+        --email admin@superset.com --password admin || true
+      superset init
       if [ -f /app/configs/import_datasources.yaml ]; then
-        superset import_datasources -p /app/configs/import_datasources.yaml
+        superset import_datasources -p /app/configs/import_datasources.yaml || true
       fi
 
   # Auto-provision Trino database connection on startup
