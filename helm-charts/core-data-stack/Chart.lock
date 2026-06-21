@@ -1,7 +1,7 @@
 dependencies:
 - name: trino
   repository: https://trinodb.github.io/charts
-  version: 0.21.0
+  version: 1.42.2
 - name: spark-operator
   repository: https://kubeflow.github.io/spark-operator
   version: 1.1.27
@@ -17,5 +17,5 @@ dependencies:
 - name: superset
   repository: https://apache.github.io/superset
   version: 0.12.8
-digest: sha256:2287f56bcac634eb6dd2d3e9f5564621854fcec91b2207391e003887f4ea274d
-generated: "2026-06-02T00:45:24.0936+03:00"
+digest: sha256:b7d9eddba133af76d8212de6e09c119c00b91805b65f03c97a77d947008d32e2
+generated: "2026-06-21T23:49:25.702805+03:00"

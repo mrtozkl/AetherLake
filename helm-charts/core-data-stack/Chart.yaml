@@ -8,7 +8,7 @@ dependencies:
   # MinIO is now deployed via MinIO Operator Tenant CRD (see templates/minio-tenant.yaml)
   # - name: minio (removed — replaced by AIStor Tenant CRD)
   - name: trino
-    version: 0.21.0
+    version: 1.42.2
     repository: https://trinodb.github.io/charts
     condition: trino.enabled
   - name: spark-operator
