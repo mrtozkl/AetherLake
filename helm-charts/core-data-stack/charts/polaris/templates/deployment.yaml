@@ -23,6 +23,23 @@ spec:
               containerPort: 8181
               protocol: TCP
           env:
+            # Polaris vends sub-scoped S3 credentials on createTable/loadTable via
+            # the AWS SDK default chain, which reads region and base credentials
+            # from AWS_* env vars — not from the per-catalog storage properties.
+            # Without these, CREATE TABLE fails ("Unable to load region/credentials
+            # from any of the providers"). MinIO ignores the region value.
+            - name: AWS_REGION
+              value: "us-east-1"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: minio-root-user
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: minio-root-password
             # Root client credentials are sourced from the cluster secret so they
             # are randomized per install rather than shipped in the chart.
             - name: POLARIS_CLIENT_ID
