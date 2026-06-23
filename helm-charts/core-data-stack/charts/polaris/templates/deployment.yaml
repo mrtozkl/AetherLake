@@ -14,6 +14,86 @@ spec:
       labels:
         app: polaris
     spec:
+      initContainers:
+        # 1. Wait for postgres, create the polaris database if missing, and flag
+        #    whether the schema still needs bootstrapping (idempotent across restarts).
+        - name: init-db
+          image: postgres:16-alpine
+          env:
+            - name: PGHOST
+              value: {{ .Values.persistence.postgres.host | quote }}
+            - name: PGPORT
+              value: {{ .Values.persistence.postgres.port | quote }}
+            - name: PGUSER
+              value: {{ .Values.persistence.postgres.username | quote }}
+            - name: PGDATABASE
+              value: {{ .Values.persistence.postgres.database | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.persistence.postgres.passwordSecret }}
+                  key: {{ .Values.persistence.postgres.passwordSecretKey }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for postgres at $PGHOST:$PGPORT..."
+              until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; do sleep 2; done
+              # Create the database if it does not exist (connect via the default db).
+              if ! psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$PGDATABASE'" | grep -q 1; then
+                echo "Creating database $PGDATABASE"; psql -d postgres -c "CREATE DATABASE \"$PGDATABASE\""
+              fi
+              # Polaris creates its tables under the polaris_schema schema. If absent,
+              # the realm/schema still needs bootstrapping.
+              N=$(psql -d "$PGDATABASE" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='polaris_schema'")
+              if [ "$N" = "0" ]; then touch /work/needs-bootstrap; echo "schema empty -> bootstrap needed"; else echo "schema present ($N tables) -> skip bootstrap"; fi
+          volumeMounts:
+            - name: work
+              mountPath: /work
+        # 2. Bootstrap the realm + schema only when the flag was set (first install).
+        - name: bootstrap
+          image: "{{ .Values.adminImage.repository }}:{{ .Values.adminImage.tag }}"
+          env:
+            - name: QUARKUS_DATASOURCE_DB_KIND
+              value: "postgresql"
+            - name: QUARKUS_DATASOURCE_USERNAME
+              value: {{ .Values.persistence.postgres.username | quote }}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.persistence.postgres.passwordSecret }}
+                  key: {{ .Values.persistence.postgres.passwordSecretKey }}
+            - name: QUARKUS_DATASOURCE_JDBC_URL
+              value: "jdbc:postgresql://{{ .Values.persistence.postgres.host }}:{{ .Values.persistence.postgres.port }}/{{ .Values.persistence.postgres.database }}"
+            - name: POLARIS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: polaris-client-id
+            - name: POLARIS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: polaris-client-secret
+          command:
+            - sh
+            - -c
+            - |
+              if [ -f /work/needs-bootstrap ]; then
+                echo "Bootstrapping Polaris realm POLARIS into postgres..."
+                java -jar /deployments/polaris-admin-tool.jar bootstrap \
+                  --realm POLARIS \
+                  --credential "POLARIS,$POLARIS_CLIENT_ID,$POLARIS_CLIENT_SECRET"
+              else
+                echo "Polaris metastore already bootstrapped, skipping."
+              fi
+          volumeMounts:
+            - name: work
+              mountPath: /work
+      volumes:
+        - name: work
+          emptyDir: {}
       containers:
         - name: polaris
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -64,5 +144,20 @@ spec:
               value: "default"
             - name: POLARIS_REALM_CONTEXT_RESOLVER_DEFAULT_REALM
               value: "POLARIS"
+            # Postgres-backed (relational-jdbc) metastore. Without this Polaris
+            # defaults to an in-memory store and loses all catalogs on restart.
+            - name: POLARIS_PERSISTENCE_TYPE
+              value: "relational-jdbc"
+            - name: QUARKUS_DATASOURCE_DB_KIND
+              value: "postgresql"
+            - name: QUARKUS_DATASOURCE_USERNAME
+              value: {{ .Values.persistence.postgres.username | quote }}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.persistence.postgres.passwordSecret }}
+                  key: {{ .Values.persistence.postgres.passwordSecretKey }}
+            - name: QUARKUS_DATASOURCE_JDBC_URL
+              value: "jdbc:postgresql://{{ .Values.persistence.postgres.host }}:{{ .Values.persistence.postgres.port }}/{{ .Values.persistence.postgres.database }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

@@ -5,6 +5,24 @@ image:
   pullPolicy: IfNotPresent
   tag: "latest"
 
+# Admin tool image (same version as the server) used to bootstrap the realm and
+# schema into the postgres metastore on first start.
+adminImage:
+  repository: apache/polaris-admin-tool
+  tag: "latest"
+
+# Postgres-backed metastore so catalogs/namespaces/tables survive Polaris
+# restarts (the default in-memory store loses everything on restart). Points at
+# the shared cluster postgres; the password comes from the credentials secret.
+persistence:
+  postgres:
+    host: "aetherlake-postgres"
+    port: 5432
+    database: "polaris"
+    username: "postgres"
+    passwordSecret: "open-lake-credentials"
+    passwordSecretKey: "postgres-password"
+
 service:
   type: ClusterIP
   port: 8181
