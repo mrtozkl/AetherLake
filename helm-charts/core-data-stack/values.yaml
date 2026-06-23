@@ -84,9 +84,14 @@ trino:
       # Polaris requires the OAuth2 scope PRINCIPAL_ROLE:ALL. Supported since the
       # Trino chart was bumped to ship Trino >= 458 (see Chart.yaml: trino 1.42.2).
       iceberg.rest-catalog.oauth2.scope=PRINCIPAL_ROLE:ALL
+      # Use the short-lived, per-table credentials Polaris vends (subscoping)
+      # instead of the static keys below. Polaris assumes a MinIO STS role scoped
+      # to the table prefix; see the Polaris chart (roleArn + minio-polaris user).
+      iceberg.rest-catalog.vended-credentials-enabled=true
       fs.native-s3.enabled=true
       s3.endpoint=http://minio-hl:9000
       s3.region=us-east-1
+      # Static keys kept as a fallback for non-vended catalog operations.
       s3.aws-access-key=${ENV:MINIO_ACCESS_KEY}
       s3.aws-secret-key=${ENV:MINIO_SECRET_KEY}
       s3.path-style-access=true

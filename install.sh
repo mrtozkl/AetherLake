@@ -52,6 +52,12 @@ REDIS_PASSWORD="$(gen_secret)"
 POLARIS_CLIENT_ID="${POLARIS_CLIENT_ID:-open-lake-admin}"
 POLARIS_CLIENT_SECRET="$(gen_secret)"
 POLARIS_CREDENTIAL="${POLARIS_CLIENT_ID}:${POLARIS_CLIENT_SECRET}"
+# Dedicated MinIO user Polaris uses to vend sub-scoped S3 credentials (STS
+# AssumeRole). The MinIO root account cannot AssumeRole, so a regular user with a
+# bucket-scoped policy is required. minio-init creates it; Polaris authenticates
+# to STS with it.
+MINIO_POLARIS_ACCESS_KEY="${MINIO_POLARIS_ACCESS_KEY:-polaris}"
+MINIO_POLARIS_SECRET_KEY="$(gen_secret)"
 
 # Create a credentials secret from the shared values above. Pass the name as $1.
 create_credentials_secret() {
@@ -71,6 +77,8 @@ create_credentials_secret() {
         --from-literal=control-panel-oidc-secret="$CONTROL_PANEL_OIDC_SECRET" \
         --from-literal=superset-oidc-secret="$SUPERSET_OIDC_SECRET" \
         --from-literal=minio-oidc-secret="$MINIO_OIDC_SECRET" \
+        --from-literal=minio-polaris-access-key="$MINIO_POLARIS_ACCESS_KEY" \
+        --from-literal=minio-polaris-secret-key="$MINIO_POLARIS_SECRET_KEY" \
         --from-literal=keycloak-admin-password="$KEYCLOAK_ADMIN_PASSWORD" \
         --from-literal=ldap-bind-password="$LDAP_BIND_PASSWORD" \
         --from-literal=polaris-client-id="$POLARIS_CLIENT_ID" \

@@ -48,16 +48,23 @@ spec:
               value: {{ .Values.initCatalog.s3Endpoint | quote }}
             - name: MINIO_BUCKET
               value: {{ .Values.initCatalog.s3Bucket | quote }}
+            # Use the dedicated Polaris S3 user (not root) so the catalog's stored
+            # credentials match the identity that vends sub-scoped tokens via STS.
             - name: MINIO_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: open-lake-credentials
-                  key: minio-root-user
+                  key: minio-polaris-access-key
             - name: MINIO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: open-lake-credentials
-                  key: minio-root-password
+                  key: minio-polaris-secret-key
+            # Role ARN Polaris assumes against MinIO STS to vend sub-scoped creds.
+            # MinIO ignores the account/role identity (it scopes by the requesting
+            # user's policy), but the AWS SDK requires a syntactically valid ARN.
+            - name: POLARIS_S3_ROLE_ARN
+              value: {{ .Values.initCatalog.roleArn | default "arn:aws:iam::000000000000:role/minio-polaris" | quote }}
           command:
             - /bin/sh
             - -c
@@ -104,6 +111,8 @@ spec:
                   },
                   "storageConfigInfo": {
                     "storageType": "S3",
+                    "roleArn": "${POLARIS_S3_ROLE_ARN}",
+                    "allowedLocations": ["s3://${MINIO_BUCKET}/"],
                     "properties": {
                       "s3.endpoint": "${MINIO_ENDPOINT}",
                       "s3.region": "us-east-1",

@@ -110,16 +110,18 @@ spec:
             # from any of the providers"). MinIO ignores the region value.
             - name: AWS_REGION
               value: "us-east-1"
+            # Polaris authenticates to MinIO STS with a dedicated, non-root user to
+            # AssumeRole and vend sub-scoped credentials (root cannot AssumeRole).
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
                   name: open-lake-credentials
-                  key: minio-root-user
+                  key: minio-polaris-access-key
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: open-lake-credentials
-                  key: minio-root-password
+                  key: minio-polaris-secret-key
             # Root client credentials are sourced from the cluster secret so they
             # are randomized per install rather than shipped in the chart.
             - name: POLARIS_CLIENT_ID
