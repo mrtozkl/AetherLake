@@ -9,9 +9,13 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
   annotations:
-    # Run this job after the minio tenant is created/upgraded
+    # Run this job after the minio tenant is created/upgraded. Negative weight so
+    # it runs BEFORE other post-install hooks (e.g. superset-init-db): Helm runs
+    # post-install hooks sequentially and aborts the whole chain on the first
+    # failure, so a slow/failing later hook must not be able to starve bucket
+    # creation. The job itself waits for the MinIO server to become ready.
     "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   template:
@@ -31,6 +35,17 @@ spec:
                   name: minio-tenant-config
                   key: config.env
             # Because config.env contains shell exports, we extract the values directly
+            # Dedicated Polaris S3 user (for STS credential vending / subscoping).
+            - name: POLARIS_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: minio-polaris-access-key
+            - name: POLARIS_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: minio-polaris-secret-key
           command:
             - /bin/sh
             - -c
@@ -63,8 +78,33 @@ spec:
               # Allow public access for now as a default (can be customized later)
               # mc anonymous set public myminio/{{ . }}
               {{- end }}
-              
+
               echo "Bucket initialization complete."
+
+              # --- Polaris STS user for credential vending (subscoping) ---
+              # Polaris assumes a role against MinIO STS to vend sub-scoped, time-
+              # limited S3 credentials per table. MinIO root cannot AssumeRole, so a
+              # regular user with a bucket-scoped policy is required. The admin/IAM
+              # subsystem can lag behind the S3 endpoint, so retry until it responds.
+              echo "Configuring Polaris S3 user for credential vending..."
+              cat > /tmp/polaris-policy.json <<'EOF'
+              {
+                "Version": "2012-10-17",
+                "Statement": [
+                  { "Effect": "Allow", "Action": ["s3:*"], "Resource": ["arn:aws:s3:::{{ .Values.minio.s3Bucket | default "lakehouse" }}", "arn:aws:s3:::{{ .Values.minio.s3Bucket | default "lakehouse" }}/*"] }
+                ]
+              }
+              EOF
+              i=0
+              until mc admin policy create myminio polaris-rw /tmp/polaris-policy.json >/dev/null 2>&1 \
+                    || mc admin policy info myminio polaris-rw >/dev/null 2>&1; do
+                i=$((i+1)); [ $i -ge 30 ] && echo "WARN: IAM not ready after retries" && break
+                echo "MinIO IAM not ready yet. Retrying in 5 seconds..."; sleep 5
+              done
+              mc admin user add myminio "$POLARIS_S3_ACCESS_KEY" "$POLARIS_S3_SECRET_KEY" 2>/dev/null || \
+                mc admin user svcacct add myminio "$POLARIS_S3_ACCESS_KEY" >/dev/null 2>&1 || true
+              mc admin policy attach myminio polaris-rw --user "$POLARIS_S3_ACCESS_KEY" 2>/dev/null || true
+              echo "Polaris S3 user configured."
           volumeMounts:
             - name: minio-config
               mountPath: /etc/minio

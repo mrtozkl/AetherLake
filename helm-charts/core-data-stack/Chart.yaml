@@ -8,7 +8,7 @@ dependencies:
   # MinIO is now deployed via MinIO Operator Tenant CRD (see templates/minio-tenant.yaml)
   # - name: minio (removed — replaced by AIStor Tenant CRD)
   - name: trino
-    version: 0.21.0
+    version: 1.42.2
     repository: https://trinodb.github.io/charts
     condition: trino.enabled
   - name: spark-operator
@@ -20,9 +20,12 @@ dependencies:
     version: 0.1.0
     repository: "file://./charts/polaris"
     condition: polaris.enabled
+  # Official Apache Airflow chart (apache/airflow images, upstream-maintained).
+  # Pinned to the last 2.x app version (2.10.5) so the Flask AppBuilder
+  # webserver_config.py SSO integration keeps working.
   - name: airflow
-    version: 13.1.2
-    repository: https://charts.bitnami.com/bitnami
+    version: 1.16.0
+    repository: https://airflow.apache.org
     condition: airflow.enabled
   - name: milvus
     version: 5.0.14

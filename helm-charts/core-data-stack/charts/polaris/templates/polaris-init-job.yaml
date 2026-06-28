@@ -9,10 +9,12 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
   annotations:
-    # Run this job after the polaris deployment is created/upgraded
-    # but also make sure minio-init finishes first (weight 10 vs 5)
+    # Run after the polaris deployment but before fragile later hooks (e.g.
+    # superset-init-db). Negative weight keeps catalog creation off the critical
+    # path of a failing hook; -5 is still after minio-init (-10) so buckets exist
+    # first. The job waits for the Polaris REST API to become ready.
     "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   template:
@@ -28,28 +30,41 @@ spec:
           env:
             - name: POLARIS_URL
               value: "http://{{ .Release.Name }}-polaris:{{ .Values.service.port }}"
-            # We use the bootstrap credentials defined in the deployment (hardcoded there as POLARIS,open-lake-admin,open-lake-secret)
-            # In a real production setup, these should come from a secret.
+            # Bootstrap credentials, sourced from the same secret the Polaris
+            # deployment uses so init authenticates with the randomized values.
             - name: CLIENT_ID
-              value: "open-lake-admin"
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: polaris-client-id
             - name: CLIENT_SECRET
-              value: "open-lake-secret"
+              valueFrom:
+                secretKeyRef:
+                  name: open-lake-credentials
+                  key: polaris-client-secret
             - name: CATALOG_NAME
               value: {{ .Values.initCatalog.name | quote }}
             - name: MINIO_ENDPOINT
               value: {{ .Values.initCatalog.s3Endpoint | quote }}
             - name: MINIO_BUCKET
               value: {{ .Values.initCatalog.s3Bucket | quote }}
+            # Use the dedicated Polaris S3 user (not root) so the catalog's stored
+            # credentials match the identity that vends sub-scoped tokens via STS.
             - name: MINIO_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: open-lake-credentials
-                  key: minio-root-user
+                  key: minio-polaris-access-key
             - name: MINIO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: open-lake-credentials
-                  key: minio-root-password
+                  key: minio-polaris-secret-key
+            # Role ARN Polaris assumes against MinIO STS to vend sub-scoped creds.
+            # MinIO ignores the account/role identity (it scopes by the requesting
+            # user's policy), but the AWS SDK requires a syntactically valid ARN.
+            - name: POLARIS_S3_ROLE_ARN
+              value: {{ .Values.initCatalog.roleArn | default "arn:aws:iam::000000000000:role/minio-polaris" | quote }}
           command:
             - /bin/sh
             - -c
@@ -96,13 +111,11 @@ spec:
                   },
                   "storageConfigInfo": {
                     "storageType": "S3",
-                    "properties": {
-                      "s3.endpoint": "${MINIO_ENDPOINT}",
-                      "s3.region": "us-east-1",
-                      "s3.access-key-id": "${MINIO_ACCESS_KEY}",
-                      "s3.secret-access-key": "${MINIO_SECRET_KEY}",
-                      "s3.path-style-access": "true"
-                    }
+                    "roleArn": "${POLARIS_S3_ROLE_ARN}",
+                    "allowedLocations": ["s3://${MINIO_BUCKET}/"],
+                    "endpoint": "${MINIO_ENDPOINT}",
+                    "stsEndpoint": "${MINIO_ENDPOINT}",
+                    "pathStyleAccess": true
                   }
                 }
               }

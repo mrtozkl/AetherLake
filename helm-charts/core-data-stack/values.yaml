@@ -15,21 +15,28 @@ minio:
   volumesPerServer: 1
   storageSize: "20Gi"
   storageClassName: "hostpath"
-  # Root credentials (will be written to config.env secret)
+  # Root credentials written to the config.env secret. These are overridden at
+  # install time (install.sh --set minio.rootUser/rootPassword=...) with the same
+  # randomized values stored in the credentials secret under minio-root-user /
+  # minio-root-password, so Trino, Milvus and Polaris authenticate successfully.
+  # The values below are dev placeholders only.
   rootUser: "minioadmin"
-  rootPassword: "minioadmin"
+  rootPassword: "CHANGE_ME"
   # Buckets to create on initialization
   initBuckets:
     - "lakehouse"
     - "milvus-vectors"
   # Keycloak OIDC SSO Config
   oidc:
-    configUrl: "http://keycloak.open-lake.local/realms/open-lake/.well-known/openid-configuration"
+    configUrl: "http://keycloak.aetherlake.local/realms/aetherlake/.well-known/openid-configuration"
     clientId: "minio"
-    clientSecret: "minio-oidc-secret-123"
+    # Overridden at install time (install.sh --set minio.oidc.clientSecret=...) so
+    # it matches the randomized secret of the `minio` Keycloak client. The default
+    # below is a dev placeholder only.
+    clientSecret: "CHANGE_ME"
     claimName: "policy"
     scopes: "openid,profile,email"
-    keycloakRealm: "open-lake"
+    keycloakRealm: "aetherlake"
     keycloakAdminUrl: "http://security-stack-keycloak/"
 
 # 2. Apache Polaris Custom Chart (Iceberg REST Catalog)
@@ -59,16 +66,32 @@ trino:
         secretKeyRef:
           name: open-lake-credentials
           key: minio-root-password
+    # Polaris OAuth2 client credential (id:secret), injected from the secret and
+    # referenced below via ${ENV:...} so it is not hardcoded in the catalog file.
+    - name: POLARIS_CREDENTIAL
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: polaris-credential
   additionalCatalogs:
     iceberg: |-
       connector.name=iceberg
       iceberg.catalog.type=rest
       iceberg.rest-catalog.uri=http://core-data-stack-polaris:8181/api/catalog
+      iceberg.rest-catalog.warehouse=lakehouse_catalog
       iceberg.rest-catalog.security=OAUTH2
-      iceberg.rest-catalog.oauth2.credential=open-lake-admin:open-lake-secret
+      iceberg.rest-catalog.oauth2.credential=${ENV:POLARIS_CREDENTIAL}
+      # Polaris requires the OAuth2 scope PRINCIPAL_ROLE:ALL. Supported since the
+      # Trino chart was bumped to ship Trino >= 458 (see Chart.yaml: trino 1.42.2).
+      iceberg.rest-catalog.oauth2.scope=PRINCIPAL_ROLE:ALL
+      # Use the short-lived, per-table credentials Polaris vends (subscoping)
+      # instead of the static keys below. Polaris assumes a MinIO STS role scoped
+      # to the table prefix; see the Polaris chart (roleArn + minio-polaris user).
+      iceberg.rest-catalog.vended-credentials-enabled=true
       fs.native-s3.enabled=true
       s3.endpoint=http://minio-hl:9000
       s3.region=us-east-1
+      # Static keys kept as a fallback for non-vended catalog operations.
       s3.aws-access-key=${ENV:MINIO_ACCESS_KEY}
       s3.aws-secret-key=${ENV:MINIO_SECRET_KEY}
       s3.path-style-access=true
@@ -78,17 +101,51 @@ spark-operator:
   enabled: true
   sparkJobNamespace: "default"
 
-# 5. Apache Airflow (Orchestrator)
-# Temporarily disabling Airflow as its embedded common templates are polluting MinIO's global scope.
+# 5. Apache Airflow (Orchestrator) — official Apache chart, apache/airflow images.
 airflow:
-  enabled: false
-  web:
-    # Generic SSO / OIDC configuration will map to the Keycloak client
-    extraEnvVars:
-      - name: AIRFLOW__WEBSERVER__AUTHENTICATE
-        value: "True"
-      - name: AIRFLOW__WEBSERVER__AUTH_BACKEND
-        value: "airflow.providers.fab.auth_manager.api.auth.backend.default"
+  enabled: true
+  # Maintained upstream image (Airflow 2.10.5, last 2.x for FAB SSO).
+  defaultAirflowRepository: apache/airflow
+  defaultAirflowTag: "2.10.5"
+  # LocalExecutor: the scheduler runs tasks in-process, so no Celery workers and
+  # no Redis broker are needed — one less stateful dependency for a dev cluster.
+  executor: LocalExecutor
+  # Use the shared, upstream-maintained datastores instead of the chart's bundled
+  # Bitnami postgresql/redis subcharts.
+  postgresql:
+    enabled: false
+  redis:
+    enabled: false
+  # Metadata DB connection, Fernet key and Flask secret key all come from the
+  # airflow-official secret created by install.sh (keys: connection / fernet-key
+  # / webserver-secret-key).
+  data:
+    metadataSecretName: airflow-official
+  fernetKeySecretName: airflow-official
+  webserverSecretKeySecretName: airflow-official
+  # No Celery components with LocalExecutor.
+  workers:
+    replicas: 0
+  flower:
+    enabled: false
+  # Don't load Airflow's example DAGs.
+  env:
+    - name: AIRFLOW__CORE__LOAD_EXAMPLES
+      value: "False"
+    - name: KEYCLOAK_BASE_URL
+      value: "http://keycloak.aetherlake.local"
+  # Keycloak OIDC client secret for the webserver_config.py, from the secret.
+  extraEnv: |
+    - name: AIRFLOW_OIDC_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: aetherlake-credentials
+          key: airflow-oidc-secret
+  webserver:
+    # Keycloak OIDC SSO via Flask AppBuilder. Reuses the webserver_config.py
+    # ConfigMap (templates/airflow-webserver-config.yaml), which maps realm roles
+    # to Airflow roles for the `airflow` Keycloak client.
+    webserverConfigConfigMapName: airflow-webserver-config
 
 # 6. Milvus (Vector Database)
 milvus:
@@ -97,7 +154,22 @@ milvus:
     enabled: false # Use standalone for local cluster to save resources
   standalone:
     enabled: true
-  
+    # Use the embedded RocksMQ message queue. The chart default (woodpecker)
+    # makes the streaming node build an S3-backed WAL chunk manager, which
+    # crash-loops here ("Endpoint url cannot have fully qualified paths").
+    # RocksMQ keeps the WAL on the local PVC and needs no external broker.
+    messageQueue: rocksmq
+  # No external broker needed with RocksMQ.
+  pulsarv3:
+    enabled: false
+  pulsar:
+    enabled: false
+
+  # Attu web UI. The `milvus.aetherlake.local` ingress route targets the
+  # core-data-stack-milvus-attu service this creates.
+  attu:
+    enabled: true
+
   # Disable embedded MinIO to prevent Bitnami common template clashes
   # Instead, point it to the primary MinIO instance we deployed in step 1
   minio:
@@ -115,23 +187,62 @@ milvus:
 # 7. Apache Superset Configuration
 superset:
   enabled: true
-  
-  # Inject Keycloak OIDC client secret from the unified secret
+
+  # Use the shared, upstream-maintained PostgreSQL and Redis (templates/
+  # shared-datastores.yaml) instead of the retired Bitnami subchart images.
+  postgresql:
+    enabled: false
+  redis:
+    enabled: false
+  supersetNode:
+    connections:
+      db_host: aetherlake-postgres
+      db_port: "5432"
+      db_user: superset
+      db_name: superset
+      # Placeholder; the real password is injected via extraEnvRaw (DB_PASS)
+      # below from the open-lake-credentials secret and overrides this.
+      db_pass: overridden-by-secret
+      redis_host: aetherlake-redis
+      redis_port: "6379"
+      # Non-empty so the chart wires Redis auth; real value comes from
+      # extraEnvRaw (REDIS_PASSWORD) below.
+      redis_password: overridden-by-secret
+
+  # Inject Keycloak OIDC client secret and the real DB/Redis passwords from the
+  # unified secret. These env entries override the placeholders the chart bakes
+  # into its env secret (env list takes precedence over envFrom).
   extraEnvRaw:
     - name: SUPERSET_OIDC_SECRET
       valueFrom:
         secretKeyRef:
           name: open-lake-credentials
           key: superset-oidc-secret
-          
-  # Custom initialization script to import connections automatically
+    - name: DB_PASS
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: postgres-password
+    - name: REDIS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: open-lake-credentials
+          key: redis-password
+
+  # Custom initialization: run the standard Superset bootstrap (DB migrate,
+  # admin user, init) then auto-import the Trino datasource. The previous script
+  # called a non-existent `superset-init` command, which failed the init job.
   init:
     initscript: |-
       #!/bin/sh
       set -e
-      superset-init --username admin --firstname Admin --lastname User --email admin@superset.com --password admin
+      superset db upgrade
+      superset fab create-admin \
+        --username admin --firstname Admin --lastname User \
+        --email admin@superset.com --password admin || true
+      superset init
       if [ -f /app/configs/import_datasources.yaml ]; then
-        superset import_datasources -p /app/configs/import_datasources.yaml
+        superset import_datasources -p /app/configs/import_datasources.yaml || true
       fi
 
   # Auto-provision Trino database connection on startup
@@ -221,10 +332,3 @@ superset:
               return user
 
       CUSTOM_SECURITY_MANAGER = CustomSsoSecurityManager
-superset:
-  postgresql:
-    image:
-      tag: 15.6.0-debian-12-r12
-  redis:
-    image:
-      tag: 7.2.4-debian-12-r12

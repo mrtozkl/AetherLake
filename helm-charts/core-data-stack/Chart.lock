@@ -1,7 +1,7 @@
 dependencies:
 - name: trino
   repository: https://trinodb.github.io/charts
-  version: 0.21.0
+  version: 1.42.2
 - name: spark-operator
   repository: https://kubeflow.github.io/spark-operator
   version: 1.1.27
@@ -9,13 +9,13 @@ dependencies:
   repository: file://./charts/polaris
   version: 0.1.0
 - name: airflow
-  repository: https://charts.bitnami.com/bitnami
-  version: 13.1.2
+  repository: https://airflow.apache.org
+  version: 1.16.0
 - name: milvus
   repository: https://zilliztech.github.io/milvus-helm/
   version: 5.0.14
 - name: superset
   repository: https://apache.github.io/superset
   version: 0.12.8
-digest: sha256:2287f56bcac634eb6dd2d3e9f5564621854fcec91b2207391e003887f4ea274d
-generated: "2026-06-02T00:45:24.0936+03:00"
+digest: sha256:0bbdc2958172367cfc52dbc5f3610fc72ff0aba2fc1983f96ea720496d90a648
+generated: "2026-06-22T00:07:28.645896+03:00"

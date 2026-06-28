@@ -1,0 +1,81 @@
+{{- if .Values.airflow.enabled }}
+# Flask AppBuilder webserver configuration that turns on Keycloak OIDC SSO for
+# the Airflow web UI. Mounted by the Bitnami chart at
+# /opt/bitnami/airflow/webserver_config.py via airflow.web.existingConfigmap.
+#
+# The client secret is injected at runtime from the AIRFLOW_OIDC_SECRET env var
+# (see airflow.web.extraEnvVars in values.yaml), so no secret is baked in here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-webserver-config
+  labels:
+    app.kubernetes.io/part-of: aetherlake
+data:
+  webserver_config.py: |-
+    import os
+    import jwt
+    from flask_appbuilder.security.manager import AUTH_OAUTH
+    from airflow.www.security import AirflowSecurityManager
+
+    # Base URL of the Keycloak realm. Defaults to the in-cluster ingress host so
+    # the browser redirect and the token issuer resolve to the same authority.
+    KEYCLOAK_BASE = os.environ.get(
+        "KEYCLOAK_BASE_URL", "http://keycloak.aetherlake.local"
+    )
+    REALM_URL = "{}/realms/aetherlake".format(KEYCLOAK_BASE)
+
+    AUTH_TYPE = AUTH_OAUTH
+    # New users are registered automatically; their roles are derived from the
+    # Keycloak realm roles on every login (see AUTH_ROLES_MAPPING below).
+    AUTH_USER_REGISTRATION = True
+    AUTH_USER_REGISTRATION_ROLE = "Public"
+    AUTH_ROLES_SYNC_AT_LOGIN = True
+
+    # Map Keycloak realm roles -> Airflow FAB roles.
+    AUTH_ROLES_MAPPING = {
+        "data-admin": ["Admin"],
+        "data-engineer": ["Op"],
+        "data-scientist": ["User"],
+    }
+
+    OAUTH_PROVIDERS = [
+        {
+            "name": "keycloak",
+            "icon": "fa-key",
+            "token_key": "access_token",
+            "remote_app": {
+                "client_id": "airflow",
+                "client_secret": os.environ.get("AIRFLOW_OIDC_SECRET"),
+                "server_metadata_url": REALM_URL
+                + "/.well-known/openid-configuration",
+                "api_base_url": REALM_URL + "/protocol/openid-connect",
+                "client_kwargs": {"scope": "openid email profile"},
+                "access_token_url": REALM_URL + "/protocol/openid-connect/token",
+                "authorize_url": REALM_URL + "/protocol/openid-connect/auth",
+                "request_token_url": None,
+            },
+        }
+    ]
+
+
+    class KeycloakSecurityManager(AirflowSecurityManager):
+        def get_oauth_user_info(self, provider, resp):
+            if provider != "keycloak":
+                return {}
+            token = resp.get("access_token")
+            # Signature is verified by Keycloak during the code exchange; here we
+            # only decode the claims to read identity and realm roles.
+            claims = jwt.decode(token, options={"verify_signature": False})
+            realm_roles = claims.get("realm_access", {}).get("roles", [])
+            return {
+                "username": claims.get("preferred_username"),
+                "email": claims.get("email", ""),
+                "first_name": claims.get("given_name", ""),
+                "last_name": claims.get("family_name", ""),
+                "role_keys": realm_roles,
+            }
+
+
+    SECURITY_MANAGER_CLASS = KeycloakSecurityManager
+{{- end }}
