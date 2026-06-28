@@ -123,6 +123,15 @@ airflow:
     metadataSecretName: airflow-official
   fernetKeySecretName: airflow-official
   webserverSecretKeySecretName: airflow-official
+  # Run the DB migration and admin-user jobs as normal resources, NOT Helm hooks.
+  # As post-install hooks they share the release's hook chain, which Helm aborts
+  # on the first failure — so a slow/failing Superset init hook would silently
+  # skip the Airflow migration, leaving scheduler/webserver stuck forever in
+  # "Waiting for migrations". Decoupling them makes the migration run regardless.
+  migrateDatabaseJob:
+    useHelmHooks: false
+  createUserJob:
+    useHelmHooks: false
   # No Celery components with LocalExecutor.
   workers:
     replicas: 0
