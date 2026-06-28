@@ -28,6 +28,19 @@ export default withMermaid(defineConfig({
         ]
       },
       {
+        text: 'Component Reference',
+        items: [
+          { text: 'Keycloak — SSO', link: '/guide/components/keycloak' },
+          { text: 'MinIO — Storage', link: '/guide/components/minio' },
+          { text: 'Trino — Query', link: '/guide/components/trino' },
+          { text: 'Apache Polaris — Catalog', link: '/guide/components/polaris' },
+          { text: 'Apache Airflow — Orchestration', link: '/guide/components/airflow' },
+          { text: 'Apache Superset — BI', link: '/guide/components/superset' },
+          { text: 'Milvus — Vector DB', link: '/guide/components/milvus' },
+          { text: 'Apache Spark — Processing', link: '/guide/components/spark' },
+        ]
+      },
+      {
         text: 'Configuration',
         items: [
           { text: 'Configuration Guide', link: '/guide/configuration' },

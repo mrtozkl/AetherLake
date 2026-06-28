@@ -123,6 +123,15 @@ airflow:
     metadataSecretName: airflow-official
   fernetKeySecretName: airflow-official
   webserverSecretKeySecretName: airflow-official
+  # Run the DB migration and admin-user jobs as normal resources, NOT Helm hooks.
+  # As post-install hooks they share the release's hook chain, which Helm aborts
+  # on the first failure — so a slow/failing Superset init hook would silently
+  # skip the Airflow migration, leaving scheduler/webserver stuck forever in
+  # "Waiting for migrations". Decoupling them makes the migration run regardless.
+  migrateDatabaseJob:
+    useHelmHooks: false
+  createUserJob:
+    useHelmHooks: false
   # No Celery components with LocalExecutor.
   workers:
     replicas: 0
@@ -254,13 +263,18 @@ superset:
           expose_in_sqllab: true
           allow_run_async: true
 
-  # Install required drivers at runtime
+  # Install required drivers at runtime. Pin cryptography to Superset 3.1.2's
+  # supported range: Authlib otherwise pulls the latest cryptography (49.x),
+  # which violates Superset's strict pin (>=42.0.4,<43.0.0) and makes every
+  # Superset process (incl. the init-db job) crash on startup with
+  # "DistributionNotFound: cryptography".
   bootstrapScript: |
     #!/bin/bash
+    PIP_PKGS="sqlalchemy-trino Authlib PyJWT cryptography>=42.0.4,<43.0.0"
     if [ -f /app/.venv/bin/pip ]; then
-      /app/.venv/bin/pip install sqlalchemy-trino Authlib PyJWT
+      /app/.venv/bin/pip install $PIP_PKGS
     else
-      pip install sqlalchemy-trino Authlib PyJWT
+      pip install $PIP_PKGS
     fi
 
   # Configuration overrides for Keycloak OIDC SSO Integration
@@ -268,7 +282,9 @@ superset:
     custom_sso: |
       import os
       from flask_appbuilder.security.manager import AUTH_OAUTH
-      from flask_appbuilder.security.sqla.manager import SecurityManager
+      # Superset 3.x requires a custom security manager to extend Superset's own
+      # SupersetSecurityManager, not FAB's SecurityManager (see UPDATING.md [4565]).
+      from superset.security import SupersetSecurityManager
       import jwt
 
       SECRET_KEY = "aetherlake-super-secret-key-that-is-long-enough"
@@ -292,7 +308,7 @@ superset:
           }
       ]
 
-      class CustomSsoSecurityManager(SecurityManager):
+      class CustomSsoSecurityManager(SupersetSecurityManager):
           def oauth_user_info(self, provider, response=None):
               if provider == 'keycloak':
                   token = response.get('access_token')
