@@ -1,10 +1,15 @@
 # Configuration Guide
 
-AetherLake is primarily configured via Helm values.
+AetherLake is primarily configured via Helm values across the two charts
+(`security-stack`, `core-data-stack`).
+
+> For the **full setting reference of each component** — every value, default and
+> gotcha — see the per-component pages under **Component Reference** in the
+> sidebar. This page covers the cross-cutting configuration.
 
 ## Component Toggles
 
-Each component can be individually enabled or disabled in your `values.yaml` file:
+Each `core-data-stack` component can be enabled or disabled in `values.yaml`:
 
 ```yaml
 minio:
@@ -22,14 +27,16 @@ spark-operator:
   enabled: true
 
 airflow:
-  enabled: false    # Disable if not needed
+  enabled: true
+
+superset:
+  enabled: true
 
 milvus:
   enabled: true
-
-keycloak:
-  enabled: true
 ```
+
+Keycloak is toggled in the `security-stack` chart (`keycloak.enabled`).
 
 ## Security & Secrets Management
 
