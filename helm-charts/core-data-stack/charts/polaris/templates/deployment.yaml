@@ -110,6 +110,11 @@ spec:
             # from any of the providers"). MinIO ignores the region value.
             - name: AWS_REGION
               value: "us-east-1"
+            # Point the AWS SDK's STS client at MinIO; otherwise AssumeRole goes to
+            # real AWS STS and fails with "security token invalid" (403). The S3
+            # endpoint + path-style come from the catalog storageConfigInfo.
+            - name: AWS_ENDPOINT_URL_STS
+              value: {{ .Values.initCatalog.s3Endpoint | quote }}
             # Polaris authenticates to MinIO STS with a dedicated, non-root user to
             # AssumeRole and vend sub-scoped credentials (root cannot AssumeRole).
             - name: AWS_ACCESS_KEY_ID

@@ -120,6 +120,30 @@ cd ../..
 echo "⏳ Waiting for Keycloak to be ready (this may take a few minutes)..."
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=keycloak -n aetherlake --timeout=300s || true
 
+# 4b. Make keycloak.aetherlake.local resolvable INSIDE the cluster. That hostname
+# is the OIDC issuer/frontend URL, but it is an ingress host only meant for the
+# browser — it does not resolve via cluster DNS. Server-side OIDC discovery from
+# MinIO/Superset/Airflow/Polaris therefore times out, and MinIO in particular
+# blocks its entire IAM subsystem ("Waiting for OpenID to be initialized").
+# Add a CoreDNS rewrite so in-cluster lookups hit the Keycloak Service directly
+# (the realm frontendUrl keeps the issuer consistent for browsers).
+echo "🌐 Adding CoreDNS rewrite for in-cluster keycloak.aetherlake.local..."
+KEYCLOAK_FQDN="security-stack-keycloak.aetherlake.svc.cluster.local"
+REWRITE_RULE="rewrite name keycloak.aetherlake.local ${KEYCLOAK_FQDN}"
+COREFILE="$(kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}')"
+if ! printf '%s' "$COREFILE" | grep -q "keycloak.aetherlake.local"; then
+    # Remove any stale open-lake hosts block and inject the rewrite after ".:53 {".
+    printf '%s' "$COREFILE" \
+        | sed '/10\.[0-9.]* keycloak\.open-lake\.local/d' \
+        | sed "s|^\\.:53 {|.:53 {\n    ${REWRITE_RULE}|" > /tmp/aetherlake-corefile
+    kubectl create configmap coredns -n kube-system --from-file=Corefile=/tmp/aetherlake-corefile \
+        --dry-run=client -o yaml | kubectl apply -f -
+    kubectl rollout restart deployment/coredns -n kube-system
+    kubectl rollout status deployment/coredns -n kube-system --timeout=60s || true
+else
+    echo "   CoreDNS rewrite already present. Skipping."
+fi
+
 # 5a. Ensure the MinIO Operator is present. Object storage is provisioned through
 # a MinIO `Tenant` CRD (helm-charts/core-data-stack/templates/minio-tenant.yaml);
 # without the operator running, that Tenant is never reconciled and the whole

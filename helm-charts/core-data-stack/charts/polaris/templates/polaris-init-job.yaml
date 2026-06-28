@@ -113,13 +113,9 @@ spec:
                     "storageType": "S3",
                     "roleArn": "${POLARIS_S3_ROLE_ARN}",
                     "allowedLocations": ["s3://${MINIO_BUCKET}/"],
-                    "properties": {
-                      "s3.endpoint": "${MINIO_ENDPOINT}",
-                      "s3.region": "us-east-1",
-                      "s3.access-key-id": "${MINIO_ACCESS_KEY}",
-                      "s3.secret-access-key": "${MINIO_SECRET_KEY}",
-                      "s3.path-style-access": "true"
-                    }
+                    "endpoint": "${MINIO_ENDPOINT}",
+                    "stsEndpoint": "${MINIO_ENDPOINT}",
+                    "pathStyleAccess": true
                   }
                 }
               }
