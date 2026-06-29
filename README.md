@@ -98,7 +98,7 @@ AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that br
 | **[Apache Airflow](https://airflow.apache.org/)** | Workflow orchestration | Apache 2.10.5 (chart 1.16.0) | ✅ Stable |
 | **[Apache Superset](https://superset.apache.org/)** | BI & dashboards | 3.1.2 (chart 0.12.8) | ✅ Stable |
 | **[Apache Spark](https://spark.apache.org/)** | Distributed data processing | Operator 1.1.27 | ✅ Stable |
-| **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | ⚠️ Standalone startup WIP |
+| **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | ✅ Stable |
 | **[dbt](https://www.getdbt.com/)** | SQL-based data transformation | Project included | ✅ Stable |
 | **Control Panel** | Web UI for platform management | Next.js 16 | ✅ Stable |
 
