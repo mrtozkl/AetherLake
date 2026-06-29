@@ -34,45 +34,52 @@ graph TD
 | `milvus.externalS3.bucketName` | `milvus-vectors` | Vector segment bucket |
 | `milvus.externalS3.accessKey` / `secretKey` | `${ENV:MINIO_ACCESS_KEY/SECRET_KEY}` | From the credentials secret |
 
-## ⚠️ Known issue — standalone crash-loops on Milvus 2.6.11
+## Gotcha — Kubernetes service-link env collision (fixed)
 
-The chart (`milvus-helm` 5.0.14) ships **Milvus 2.6.11**, where the **streaming
-node** is a mandatory component. On startup its chunk manager fails:
+On Milvus 2.6.11 the mandatory **streaming node** initially crash-looped:
 
 ```
 StreamingNode init failed: StreamingNode try to new chunk manager failed:
 Endpoint url cannot have fully qualified paths. (minio.ErrorResponse)
 ```
 
-The proxy then loops on *"find no available mixcoord, check mixcoord state"* and
-the pod crash-loops. This blocks Milvus only — the rest of the stack is healthy.
+**Root cause:** the MinIO tenant exposes a Service named `minio`, so Kubernetes
+auto-injects *service-link* environment variables into every pod in the
+namespace — including:
 
-### What was investigated (none resolved it)
+```
+MINIO_PORT=tcp://10.x.x.x:80
+```
 
-| Attempt | Result |
-|---------|--------|
-| `woodpecker.storage.type: local` (move streaming WAL off S3) | No change — the streaming node uses the global `minio` config, not `woodpecker.storage` |
-| `cloudProvider: minio` + real root creds + `useVirtualHost: false` | No change |
-| Inject `MINIO_ACCESS_KEY/SECRET_KEY` env (they are unset on the pod) | Endpoint error happens before credentials matter |
-| Pin image to `milvusdb/milvus:v2.5.4` (no mandatory streaming node) | The streaming-node error disappears, but a 2.5 image against the chart's 2.6-oriented config mismatches and crashes differently |
+Milvus reads `MINIO_PORT` as the override for `minio.port`, so the S3 endpoint
+became `minio-hl:tcp://10.x.x.x:80` → a "fully qualified path" the MinIO Go SDK
+rejects. (The config file itself was fine — `address: minio-hl`, `port: 9000`.)
 
-The global `minio` config is well-formed (`address: minio-hl`, `port: 9000`,
-`useVirtualHost: false`), and every other Milvus component uses it successfully —
-only the 2.6 streaming node mishandles the endpoint. This is an **upstream
-Milvus 2.6.11 / milvus-helm 5.0.14 incompatibility**, not a config error fixable
-from this chart.
+**Fix (in this chart):** set the MinIO connection explicitly via
+`milvus.standalone.extraEnv` so the pod-spec env wins over the auto-injected
+service links, and provide credentials through Milvus's native env override:
 
-### Path forward (future work)
+```yaml
+milvus:
+  standalone:
+    extraEnv:
+      - name: MINIO_ADDRESS
+        value: "minio-hl"
+      - name: MINIO_PORT
+        value: "9000"
+      - name: MINIO_ACCESSKEYID
+        valueFrom: { secretKeyRef: { name: open-lake-credentials, key: minio-root-user } }
+      - name: MINIO_SECRETACCESSKEY
+        valueFrom: { secretKeyRef: { name: open-lake-credentials, key: minio-root-password } }
+```
 
-1. **Recommended:** downgrade `milvus-helm` to a version that natively ships a
-   stable standalone **2.5.x** (matched chart + image + config, no mandatory
-   streaming node) — a deliberate `Chart.yaml` dependency change.
-2. Or adopt a later **2.6.x** patch once the streaming-node chunk-manager bug is
-   fixed upstream and re-validate against this MinIO setup.
+The `externalS3.accessKey/secretKey: "${ENV:...}"` placeholders do **not** resolve
+(Milvus has no such substitution) and are superseded by the env override above.
+Verified live: standalone comes up `1/1`, `/healthz` returns `OK`.
 
-Until then Milvus is left at the chart default (2.6.11) and is the one component
-not yet operational; the lakehouse core (SSO, MinIO, Polaris, Trino, Airflow,
-Superset) is fully working.
+> If you hit *"IAM sub-system not initialized"* or service-link collisions for
+> other components, the same root cause applies — a Service whose name matches a
+> config env-override prefix. Set the value explicitly via `extraEnv`.
 
 ## Operations
 

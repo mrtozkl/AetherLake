@@ -13,15 +13,10 @@ Reference** in the sidebar.
 | **[Apache Airflow](https://airflow.apache.org/)** | Workflow orchestration | 2.10.5 (chart 1.16.0) | [Airflow — Orchestration](./components/airflow) |
 | **[Apache Superset](https://superset.apache.org/)** | BI & dashboards | 3.1.2 (chart 0.12.8) | [Superset — BI](./components/superset) |
 | **[Apache Spark](https://spark.apache.org/)** | Distributed data processing | operator 1.1.27 | [Spark — Processing](./components/spark) |
-| **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | [Milvus — Vector DB](./components/milvus) ⚠️ |
+| **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | [Milvus — Vector DB](./components/milvus) |
 | **[dbt](https://www.getdbt.com/)** | SQL-based data transformation | — | [Data Pipelines](./pipelines) |
 | **Control Panel** | Web UI for platform management | — | [Control Panel](./control-panel) |
 | **MCP Server** | Agent tooling (K8s/Trino/Polaris/Airflow) | — | [MCP Server](./mcp-server) |
-
-> ⚠️ **Milvus** is the one component not yet operational — Milvus 2.6.11's
-> mandatory streaming node has an upstream chunk-manager incompatibility with
-> this chart. See its [reference page](./components/milvus) for the full
-> diagnosis and the planned fix.
 
 ## Helm chart layout
 

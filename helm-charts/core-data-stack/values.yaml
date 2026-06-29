@@ -163,11 +163,31 @@ milvus:
     enabled: false # Use standalone for local cluster to save resources
   standalone:
     enabled: true
-    # Use the embedded RocksMQ message queue. The chart default (woodpecker)
-    # makes the streaming node build an S3-backed WAL chunk manager, which
-    # crash-loops here ("Endpoint url cannot have fully qualified paths").
-    # RocksMQ keeps the WAL on the local PVC and needs no external broker.
+    # Embedded RocksMQ message queue — keeps the WAL on the local PVC, no broker.
     messageQueue: rocksmq
+    # Kubernetes auto-injects service-link env vars for the `minio` Service,
+    # including MINIO_PORT=tcp://<minio-svc-ip>:80. Milvus reads MINIO_PORT as the
+    # override for minio.port, so that value silently corrupts the S3 endpoint and
+    # the 2.6 streaming node crash-loops with "Endpoint url cannot have fully
+    # qualified paths". Setting the MinIO connection explicitly here makes the
+    # pod-spec env win over the auto-injected service links. Credentials use
+    # Milvus's native env override (the externalS3 ${ENV:...} values do not
+    # resolve, so they are superseded by these).
+    extraEnv:
+      - name: MINIO_ADDRESS
+        value: "minio-hl"
+      - name: MINIO_PORT
+        value: "9000"
+      - name: MINIO_ACCESSKEYID
+        valueFrom:
+          secretKeyRef:
+            name: open-lake-credentials
+            key: minio-root-user
+      - name: MINIO_SECRETACCESSKEY
+        valueFrom:
+          secretKeyRef:
+            name: open-lake-credentials
+            key: minio-root-password
   # No external broker needed with RocksMQ.
   pulsarv3:
     enabled: false
