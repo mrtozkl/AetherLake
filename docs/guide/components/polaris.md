@@ -81,6 +81,29 @@ the Polaris `SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION` feature flag. Subscoping is
 **ON** by default here for least-privilege access.
 :::
 
+## Catalog RBAC (required for table writes)
+
+When a catalog is created, Polaris auto-creates a `catalog_admin` catalog-role and
+assigns it to the `service_admin` principal — but only with
+`CATALOG_MANAGE_ACCESS` and `CATALOG_MANAGE_METADATA`. Those cover metadata, **not
+data**. Creating a table through Trino uses *write delegation* (vended
+credentials), which needs `CATALOG_MANAGE_CONTENT`. Without it every `CREATE TABLE`
+fails:
+
+```
+Failed to create transaction
+  Principal 'root' … is not authorized for op
+  CREATE_TABLE_STAGED_WITH_WRITE_DELEGATION
+```
+
+The `polaris-init` Job therefore grants `CATALOG_MANAGE_CONTENT` to `catalog_admin`
+after creating the catalog (idempotent, also applied on upgrades):
+
+```bash
+PUT /api/management/v1/catalogs/{catalog}/catalog-roles/catalog_admin/grants
+{ "grant": { "type": "catalog", "privilege": "CATALOG_MANAGE_CONTENT" } }
+```
+
 ## Bootstrap / root credentials
 
 | Env | Source | Description |
