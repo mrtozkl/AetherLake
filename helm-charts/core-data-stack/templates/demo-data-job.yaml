@@ -1,0 +1,117 @@
+{{- if .Values.demoData.enabled }}
+# Seeds a small demo dataset (iceberg.demo.events / iceberg.demo.users) so a fresh
+# install has something to explore in the SQL IDE and the Iceberg Tables page.
+# Runs as a post-install/post-upgrade hook AFTER polaris-init (weight -5) has
+# created the catalog and granted CATALOG_MANAGE_CONTENT. Idempotent: it skips
+# seeding when the demo table is already populated, and never fails the release if
+# Trino doesn't become ready in time.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-demo-data
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "4"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  seed.py: |
+    import json, os, sys, time, urllib.request
+
+    TRINO = os.environ.get("TRINO_URL", "http://core-data-stack-trino:8080")
+    HDR = {"X-Trino-User": "admin", "Content-Type": "text/plain"}
+
+    def q(sql):
+        req = urllib.request.Request(TRINO + "/v1/statement", data=sql.encode(), method="POST", headers=HDR)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                j = json.loads(r.read())
+        except Exception as e:
+            return ("ERROR", str(e))
+        data = []
+        while True:
+            if j.get("error"):
+                return ("ERROR", j["error"].get("message"))
+            if j.get("data"):
+                data += j["data"]
+            nxt = j.get("nextUri")
+            if not nxt:
+                return ("OK", data)
+            time.sleep(0.2)
+            try:
+                with urllib.request.urlopen(urllib.request.Request(nxt, headers={"X-Trino-User": "admin"}), timeout=30) as r:
+                    j = json.loads(r.read())
+            except Exception as e:
+                return ("ERROR", str(e))
+
+    print("Waiting for Trino...", flush=True)
+    for _ in range(120):
+        if q("SELECT 1")[0] == "OK":
+            break
+        time.sleep(5)
+    else:
+        print("Trino not ready in time; skipping demo seed.")
+        sys.exit(0)
+
+    print("Waiting for the iceberg catalog...", flush=True)
+    for _ in range(60):
+        if q("SHOW SCHEMAS IN iceberg")[0] == "OK":
+            break
+        time.sleep(5)
+
+    st, rows = q("SELECT count(*) FROM iceberg.demo.events")
+    if st == "OK" and rows and int(rows[0][0]) > 0:
+        print("Demo data already present; nothing to do.")
+        sys.exit(0)
+
+    stmts = [
+        "CREATE SCHEMA IF NOT EXISTS iceberg.demo",
+        "CREATE TABLE IF NOT EXISTS iceberg.demo.events (id bigint, event_type varchar, user_id bigint, amount double, created_at timestamp(6)) WITH (partitioning = ARRAY['event_type'])",
+        "INSERT INTO iceberg.demo.events VALUES (1,'click',101,9.99,timestamp '2026-06-01 10:00:00'),(2,'view',102,0.0,timestamp '2026-06-01 10:05:00'),(3,'purchase',101,49.50,timestamp '2026-06-02 12:00:00'),(4,'click',103,5.25,timestamp '2026-06-02 13:30:00')",
+        "CREATE TABLE IF NOT EXISTS iceberg.demo.users (user_id bigint, name varchar, country varchar)",
+        "INSERT INTO iceberg.demo.users VALUES (101,'Ada','TR'),(102,'Linus','FI'),(103,'Grace','US')",
+    ]
+    for s in stmts:
+        st, msg = q(s)
+        print(("OK  " if st == "OK" else "ERR ") + s[:62], "" if st == "OK" else msg, flush=True)
+        if st == "ERROR":
+            sys.exit(1)
+    print("Demo data seeded.")
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-demo-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: demo-data
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: demo-data
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: {{ .Values.demoData.image | default "python:3.12-slim" | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TRINO_URL
+              value: "http://{{ .Release.Name }}-trino:8080"
+          command: ["python", "/scripts/seed.py"]
+          volumeMounts:
+            - name: seed
+              mountPath: /scripts
+      volumes:
+        - name: seed
+          configMap:
+            name: {{ .Release.Name }}-demo-data
+{{- end }}

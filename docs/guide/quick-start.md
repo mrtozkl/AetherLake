@@ -39,6 +39,7 @@ Add the following to your `/etc/hosts` (or use a local DNS resolver):
 127.0.0.1  keycloak.aetherlake.local
 127.0.0.1  airflow.aetherlake.local
 127.0.0.1  milvus.aetherlake.local
+127.0.0.1  superset.aetherlake.local
 ```
 
 ### 7. Access the platform
@@ -51,6 +52,19 @@ Add the following to your `/etc/hosts` (or use a local DNS resolver):
 | Polaris | `http://polaris.aetherlake.local` |
 | Keycloak | `http://keycloak.aetherlake.local` |
 | Airflow | `http://airflow.aetherlake.local` |
+| Superset | `http://superset.aetherlake.local` |
 | Milvus (Attu) | `http://milvus.aetherlake.local` |
 
 **Default credentials:** `admin` / `admin`
+
+### 8. (Optional) Enable resource metrics
+
+The Control Panel's [Observability](/guide/control-panel#observability) page shows
+per-pod CPU/RAM when [metrics-server](https://github.com/kubernetes-sigs/metrics-server)
+is installed. On Docker Desktop install it with `--kubelet-insecure-tls`:
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl patch deployment metrics-server -n kube-system --type=json \
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+```
