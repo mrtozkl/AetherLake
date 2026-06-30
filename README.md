@@ -68,7 +68,7 @@ AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that br
 │  │                                                                  │
 │  │  ┌───────────────────────────────────────────────────┐          │
 │  │  │              Control Panel (Next.js)               │          │
-│  │  │  Service Status · Trino Catalogs · SQL IDE · i18n  │          │
+│  │  │ Status · Observability · Catalogs · SQL IDE · i18n │          │
 │  │  └───────────────────────────────────────────────────┘          │
 │  │                                                                  │
 │  │  ┌───────────────────────────────────────────────────┐          │
@@ -114,6 +114,7 @@ AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that br
 - [Helm](https://helm.sh/) v3.12+
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - NGINX Ingress Controller
+- *(optional)* [metrics-server](https://github.com/kubernetes-sigs/metrics-server) — required for the Control Panel's per-pod CPU/RAM metrics. On Docker Desktop install it with `--kubelet-insecure-tls`.
 
 ### 1. Clone the repository
 
@@ -143,6 +144,7 @@ Add the following to your `/etc/hosts` (or use a local DNS resolver):
 127.0.0.1  keycloak.aetherlake.local
 127.0.0.1  airflow.aetherlake.local
 127.0.0.1  milvus.aetherlake.local
+127.0.0.1  superset.aetherlake.local
 ```
 
 ### 7. Access the platform
@@ -181,6 +183,7 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 ### Features
 
 - **Platform Overview** — Real-time pod status monitoring with auto-refresh
+- **Observability** — Pod log viewer (live tail), Kubernetes events, and per-pod CPU/RAM metrics
 - **Trino Management** — Create, delete, and configure SQL catalogs (Iceberg, Hive, PostgreSQL, MySQL)
 - **Polaris Management** — Manage Iceberg REST catalogs and namespaces
 - **SQL IDE** — Browser-based SQL editor with Monaco Editor, schema explorer, and query results
@@ -188,6 +191,16 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 - **SSO Integration** — Keycloak OIDC and credentials-based authentication
 - **Internationalization** — English and Turkish support with runtime switching
 - **Role-Based Access** — Admin-only features (Keycloak management)
+
+### Screenshots
+
+| Observability — live pod logs | Observability — metrics & details |
+|---|---|
+| ![Observability logs](assets/observability.png) | ![Observability details](assets/observability-details.png) |
+
+| Unified SQL IDE | Trino catalogs |
+|---|---|
+| ![SQL IDE](assets/ide.png) | ![Trino catalogs](assets/trino.png) |
 
 ### Running locally
 

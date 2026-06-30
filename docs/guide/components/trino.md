@@ -50,9 +50,20 @@ only supported since Trino 458 — hence the chart bump to Trino 480.
 | `trino.enabled` | `true` | Toggle Trino |
 | `trino.server.workers` | `2` | Number of worker pods |
 | `trino.additionalCatalogs.iceberg` | *(see above)* | Iceberg/Polaris catalog |
+| `trino.additionalConfigProperties` | `["http-server.process-forwarded=true"]` | Accept ingress `X-Forwarded-*` headers (see below) |
 | `trino.env[MINIO_ACCESS_KEY]` | secret `minio-root-user` | S3 access key |
 | `trino.env[MINIO_SECRET_KEY]` | secret `minio-root-password` | S3 secret key |
 | `trino.env[POLARIS_CREDENTIAL]` | secret `polaris-credential` | Polaris OAuth2 `id:secret` |
+
+### Why `process-forwarded` is required
+
+Trino runs behind the NGINX ingress, which injects `X-Forwarded-*` headers. By
+default Trino's HTTP server (airlift) **rejects** forwarded requests with
+`HTTP 406 — Server configuration does not allow processing of the X-Forwarded-For
+header`. That breaks both the Trino web UI and the Control Panel SQL IDE, which
+call `/v1/statement` through `trino.aetherlake.local`. Setting
+`http-server.process-forwarded=true` (applied to the coordinator and workers via
+`additionalConfigProperties`) allows those headers and resolves the 406.
 
 ## Credential vending
 
