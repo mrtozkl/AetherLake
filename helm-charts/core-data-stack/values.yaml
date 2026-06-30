@@ -54,6 +54,13 @@ trino:
   enabled: true
   server:
     workers: 2
+  # Trino sits behind the nginx ingress, which injects X-Forwarded-* headers. By
+  # default airlift's HTTP server rejects forwarded requests with HTTP 406
+  # ("Server configuration does not allow processing of the X-Forwarded-For
+  # header"), breaking both the Trino web UI and the Control Panel SQL IDE that
+  # call /v1/statement through trino.aetherlake.local. Allow processing them.
+  additionalConfigProperties:
+    - http-server.process-forwarded=true
   env:
     # Inject S3 credentials securely into the Trino pods
     - name: MINIO_ACCESS_KEY
