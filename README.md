@@ -63,7 +63,8 @@ AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that br
 │  │  │  Airflow     │  │  Spark      │  │  Superset    │            │
 │  │  │ (Orchestr.)  │  │ (Process.)  │  │  (BI / dbt)  │            │
 │  │  └──────────────┘  └─────────────┘  └──────────────┘            │
-│  │     (all three above share aetherlake-postgres)                 │
+│  │   Airflow/Superset/Polaris → shared aetherlake-postgres          │
+│  │   Keycloak → its own keycloak-postgres (isolated)               │
 │  │                                                                  │
 │  │  ┌───────────────────────────────────────────────────┐          │
 │  │  │              Control Panel (Next.js)               │          │
@@ -99,6 +100,7 @@ AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that br
 | **[Apache Superset](https://superset.apache.org/)** | BI & dashboards | 3.1.2 (chart 0.12.8) | ✅ Stable |
 | **[Apache Spark](https://spark.apache.org/)** | Distributed data processing | Operator 1.1.27 | ✅ Stable |
 | **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | ✅ Stable |
+| **[PostgreSQL](https://www.postgresql.org/)** | Metadata datastore (shared + Keycloak) | 16-alpine | ✅ Stable |
 | **[dbt](https://www.getdbt.com/)** | SQL-based data transformation | Project included | ✅ Stable |
 | **Control Panel** | Web UI for platform management | Next.js 16 | ✅ Stable |
 
