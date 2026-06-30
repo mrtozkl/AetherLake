@@ -172,7 +172,12 @@ export default function TablesPage() {
                                             <span className="text-muted">{detail.namespace}.</span>{detail.name}
                                         </h3>
                                         {detail.formatVersion && <span className="badge badge-neutral">v{detail.formatVersion}</span>}
-                                        <a href="/query" className="btn-ghost text-xs"><Database className="w-3.5 h-3.5" /> {t("tbl.queryInIde")}</a>
+                                        <a
+                                            href={`/query?sql=${encodeURIComponent(`SELECT * FROM iceberg.${detail.namespace}.${detail.name} LIMIT 100`)}`}
+                                            className="btn-ghost text-xs"
+                                        >
+                                            <Database className="w-3.5 h-3.5" /> {t("tbl.queryInIde")}
+                                        </a>
                                     </div>
                                     {detail.location && <p className="text-[11px] text-muted font-mono mt-1 truncate">{detail.location}</p>}
                                 </div>

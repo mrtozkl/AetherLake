@@ -69,6 +69,13 @@ catalog:
 It reads from Polaris via the bootstrap client credentials, so it works whether
 you signed in with Keycloak SSO or the local `admin` account.
 
+::: tip Demo dataset
+A fresh install seeds a small demo dataset — `iceberg.demo.events` (partitioned by
+`event_type`) and `iceberg.demo.users` — via a post-install hook, so this page and
+the SQL IDE have something to show out of the box. Disable it with
+`--set demoData.enabled=false`.
+:::
+
 ## Running locally
 
 If you want to run the Control Panel locally outside of the Kubernetes cluster:

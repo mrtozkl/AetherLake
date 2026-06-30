@@ -5,6 +5,13 @@ global:
     endpoint: "http://minio-hl:9000"
     defaultBucket: "lakehouse"
 
+# Optional demo dataset (iceberg.demo.events / iceberg.demo.users) seeded after
+# install via a post-install hook so a fresh cluster has data to explore in the
+# SQL IDE and the Iceberg Tables page. Idempotent; safe to leave on.
+demoData:
+  enabled: true
+  image: "python:3.12-slim"
+
 # 1. MinIO AIStor Configuration (Storage Layer — deployed via Operator Tenant CRD)
 minio:
   enabled: true
