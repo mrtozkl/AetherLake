@@ -50,6 +50,7 @@ by a `keycloak-config-cli` Job after Keycloak starts.
 | `keycloak.image` | `quay.io/keycloak/keycloak:26.3.3` | Server image |
 | `keycloak.auth.adminUser` | `admin` | Admin console user |
 | `keycloak.auth.passwordSecretKey` | `keycloak-admin-password` | Admin password key in the secret |
+| `keycloak.postgres.passwordSecretKey` | `keycloak-db-password` | DB password key — separate from the shared `postgres-password` ([why](./postgres#why-keycloak-keeps-its-own-database)) |
 | `keycloak.extraEnvVars[KC_HOSTNAME]` | `keycloak.aetherlake.local` | Public hostname |
 | `keycloak.extraEnvVars[KC_HOSTNAME_STRICT]` | `false` | Allow non-strict hostname |
 | `keycloak.extraEnvVars[KC_PROXY_HEADERS]` | `xforwarded` | Behind the ingress |

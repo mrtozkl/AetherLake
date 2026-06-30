@@ -10,9 +10,12 @@ keycloak:
   # Upstream Keycloak server image.
   image: "quay.io/keycloak/keycloak:26.3.3"
   adminUser: admin
-  # Official PostgreSQL image for Keycloak's database.
+  # Official PostgreSQL image for Keycloak's database. The DB password is read
+  # from its OWN key in the credentials secret (not the shared `postgres-password`
+  # used by the core-data-stack), keeping the auth datastore's credential isolated.
   postgres:
     image: "postgres:16-alpine"
+    passwordSecretKey: "keycloak-db-password"
   # Upstream realm-import tool (replaces the Bitnami keycloak-config-cli image).
   # Tag format is <config-cli-version>-<keycloak-major>.
   configCli:
