@@ -11,7 +11,7 @@ export default function QueryIDE() {
     const { data: session, status } = useSession({ required: true });
     const { t } = useLocale();
 
-    const [query, setQuery] = useState("SELECT * FROM system.runtime.nodes LIMIT 10;");
+    const [query, setQuery] = useState("SELECT * FROM system.runtime.nodes LIMIT 10");
     const [running, setRunning] = useState(false);
     const [results, setResults] = useState<{ columns: any[], data: any[][] } | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -25,6 +25,13 @@ export default function QueryIDE() {
     const [loadingSchema, setLoadingSchema] = useState<string | null>(null);
 
     useEffect(() => { if (status === "authenticated") fetchCatalogs(); }, [status]);
+
+    // Allow other pages (e.g. the Iceberg table explorer) to deep-link a query
+    // via ?sql=. Read it once on mount so it overrides the default statement.
+    useEffect(() => {
+        const sql = new URLSearchParams(window.location.search).get("sql");
+        if (sql) setQuery(sql);
+    }, []);
 
     const runQuery = async (sql: string, isBackground = false) => {
         if (!isBackground) { setRunning(true); setError(null); setResults(null); }
@@ -58,7 +65,9 @@ export default function QueryIDE() {
     };
 
     const selectTable = (catalog: string, schema: string, table: string) => {
-        setQuery(`SELECT * FROM ${catalog}.${schema}.${table} LIMIT 100;`);
+        // No trailing semicolon: Trino's /v1/statement endpoint rejects it with
+        // "mismatched input ';'. Expecting: <EOF>".
+        setQuery(`SELECT * FROM ${catalog}.${schema}.${table} LIMIT 100`);
     };
 
     if (status === "loading") {

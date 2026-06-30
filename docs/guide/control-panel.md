@@ -8,6 +8,7 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 
 - **Platform Overview** — Real-time pod status monitoring with auto-refresh
 - **Observability** — Pod log viewer (live tail), Kubernetes events, and per-pod CPU/RAM metrics
+- **Iceberg Tables** — Browse Polaris namespaces, table schemas, partitions, and snapshot history
 - **Trino Management** — Create, delete, and configure SQL catalogs (Iceberg, Hive, PostgreSQL, MySQL)
 - **Polaris Management** — Manage Iceberg REST catalogs and namespaces
 - **SQL IDE** — Browser-based SQL editor with Monaco Editor, schema explorer, and query results
@@ -48,6 +49,32 @@ kubectl patch deployment metrics-server -n kube-system --type=json \
 
 The logs, events, and details still work without metrics-server — only the usage
 numbers are hidden, and the page shows a notice.
+
+## Iceberg Tables
+
+![Iceberg table explorer](/tables.png)
+
+The **Iceberg Tables** page is a read-only explorer over the Polaris Iceberg REST
+catalog:
+
+- **Namespace / table tree** — Expand a namespace to list its tables.
+- **Overview** — Row count, data-file count, total size, and Iceberg format
+  version for the current snapshot.
+- **Schema** — Columns with their Iceberg types and required flags.
+- **Partitions** — Partition fields with their transform and source column.
+- **Snapshots** — Snapshot history (operation, added rows, commit time), with the
+  current snapshot flagged.
+- **Properties** — Raw table properties.
+
+It reads from Polaris via the bootstrap client credentials, so it works whether
+you signed in with Keycloak SSO or the local `admin` account.
+
+::: tip Demo dataset
+A fresh install seeds a small demo dataset — `iceberg.demo.events` (partitioned by
+`event_type`) and `iceberg.demo.users` — via a post-install hook, so this page and
+the SQL IDE have something to show out of the box. Disable it with
+`--set demoData.enabled=false`.
+:::
 
 ## Running locally
 

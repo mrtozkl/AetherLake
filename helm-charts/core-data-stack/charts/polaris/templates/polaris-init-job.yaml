@@ -94,12 +94,11 @@ spec:
               # 2. Check if catalog already exists
               CATALOG_EXISTS=$(curl -s -H "Authorization: Bearer ${BEARER_TOKEN}" "${POLARIS_URL}/api/management/v1/catalogs" | grep -c "\"name\":\"${CATALOG_NAME}\"")
               
+              # 3. Create Catalog (skip if it already exists; the grant below is
+              # ensured regardless so upgrades repair a catalog created before it).
               if [ "$CATALOG_EXISTS" -gt 0 ]; then
                 echo "Catalog '${CATALOG_NAME}' already exists. Skipping creation."
-                exit 0
-              fi
-              
-              # 3. Create Catalog
+              else
               # Construct JSON payload
               PAYLOAD=$(cat <<EOF
               {
@@ -135,4 +134,19 @@ spec:
                 echo "Failed to create catalog. See response above."
                 exit 1
               fi
+              fi
+
+              # 4. Ensure the auto-created catalog_admin role can manage CONTENT, not
+              # just metadata/access. Without CATALOG_MANAGE_CONTENT the service_admin
+              # principal is "not authorized for op CREATE_TABLE_STAGED_WITH_WRITE_
+              # DELEGATION", so every CREATE TABLE through Trino (which uses Polaris
+              # vended credentials) fails with "Failed to create transaction". The
+              # grant is idempotent, so it is safe to re-apply on every run.
+              echo "Ensuring CATALOG_MANAGE_CONTENT grant on catalog_admin..."
+              curl -s -X PUT "${POLARIS_URL}/api/management/v1/catalogs/${CATALOG_NAME}/catalog-roles/catalog_admin/grants" \
+                -H "Authorization: Bearer ${BEARER_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"grant":{"type":"catalog","privilege":"CATALOG_MANAGE_CONTENT"}}'
+              echo ""
+              echo "Catalog initialization complete."
 {{- end }}
