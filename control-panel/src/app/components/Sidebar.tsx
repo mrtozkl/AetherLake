@@ -5,11 +5,12 @@ import { useSession, signOut } from "next-auth/react";
 import { useLocale } from "../locale-provider";
 import {
     LayoutDashboard, Database, Network, Code2,
-    LogOut, ChevronDown, Globe, BarChart3
+    LogOut, ChevronDown, Globe, BarChart3, Activity
 } from "lucide-react";
 
 const NAV_ITEMS = [
     { href: "/", labelKey: "nav.overview" as const, icon: LayoutDashboard },
+    { href: "/observability", labelKey: "nav.observability" as const, icon: Activity },
     { href: "/trino", labelKey: "nav.trino" as const, icon: Database },
     { href: "/polaris", labelKey: "nav.polaris" as const, icon: Network },
     { href: "/query", labelKey: "nav.query" as const, icon: Code2 },
