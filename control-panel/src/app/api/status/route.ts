@@ -12,8 +12,9 @@ const NAMESPACE = 'aetherlake';
 // Map service names to their pod label selectors
 const SERVICE_POD_MAP: Record<string, { label: string; value: string }> = {
     'MinIO Storage': { label: 'v1.min.io/tenant', value: 'minio' },
-    'Trino Analytics': { label: 'app', value: 'trino' },
-    'Apache Airflow': { label: 'app.kubernetes.io/name', value: 'airflow' },
+    'Trino Analytics': { label: 'app.kubernetes.io/name', value: 'trino' },
+    'Apache Airflow': { label: 'tier', value: 'airflow' },
+    'Apache Superset': { label: 'app', value: 'superset' },
     'Milvus Vector Search': { label: 'app.kubernetes.io/name', value: 'milvus' },
     'Apache Polaris': { label: 'app', value: 'polaris' },
     'Keycloak': { label: 'app.kubernetes.io/name', value: 'keycloak' },
