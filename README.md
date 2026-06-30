@@ -184,6 +184,7 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 
 - **Platform Overview** — Real-time pod status monitoring with auto-refresh
 - **Observability** — Pod log viewer (live tail), Kubernetes events, and per-pod CPU/RAM metrics
+- **Iceberg Tables** — Browse Polaris namespaces, table schemas, partitions, and snapshot history
 - **Trino Management** — Create, delete, and configure SQL catalogs (Iceberg, Hive, PostgreSQL, MySQL)
 - **Polaris Management** — Manage Iceberg REST catalogs and namespaces
 - **SQL IDE** — Browser-based SQL editor with Monaco Editor, schema explorer, and query results
@@ -201,6 +202,10 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 | Unified SQL IDE | Trino catalogs |
 |---|---|
 | ![SQL IDE](assets/ide.png) | ![Trino catalogs](assets/trino.png) |
+
+| Iceberg table explorer |
+|---|
+| ![Iceberg tables](assets/tables.png) |
 
 ### Running locally
 
