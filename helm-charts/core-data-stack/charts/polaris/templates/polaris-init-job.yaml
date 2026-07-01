@@ -106,7 +106,8 @@ spec:
                   "name": "${CATALOG_NAME}",
                   "type": "INTERNAL",
                   "properties": {
-                    "default-base-location": "s3://${MINIO_BUCKET}/"
+                    "default-base-location": "s3://${MINIO_BUCKET}/",
+                    "polaris.config.drop-with-purge.enabled": "true"
                   },
                   "storageConfigInfo": {
                     "storageType": "S3",
@@ -148,5 +149,29 @@ spec:
                 -H "Content-Type: application/json" \
                 -d '{"grant":{"type":"catalog","privilege":"CATALOG_MANAGE_CONTENT"}}'
               echo ""
+
+              # 5. Ensure drop-with-purge is enabled. Trino's DROP TABLE on an
+              # Iceberg REST catalog requests a purge (delete data files), which
+              # Polaris refuses unless the catalog has
+              # polaris.config.drop-with-purge.enabled=true. New catalogs get it
+              # at creation (above); patch it in idempotently for catalogs created
+              # before this was added. Skip if already set so we don't bump the
+              # entity version on every upgrade.
+              echo "Ensuring drop-with-purge.enabled on '${CATALOG_NAME}'..."
+              CATALOG_JSON=$(curl -s -H "Authorization: Bearer ${BEARER_TOKEN}" "${POLARIS_URL}/api/management/v1/catalogs/${CATALOG_NAME}")
+              if echo "$CATALOG_JSON" | grep -q "drop-with-purge"; then
+                echo "drop-with-purge already enabled. Skipping."
+              else
+                # Catalog property updates use optimistic locking, so fetch the
+                # current entity version. The properties map is replaced wholesale,
+                # so re-send default-base-location to preserve it.
+                ENTITY_VERSION=$(echo "$CATALOG_JSON" | grep -o '"entityVersion":[0-9]*' | head -1 | awk -F: '{print $2}')
+                curl -s -X PUT "${POLARIS_URL}/api/management/v1/catalogs/${CATALOG_NAME}" \
+                  -H "Authorization: Bearer ${BEARER_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"currentEntityVersion\": ${ENTITY_VERSION}, \"properties\": {\"default-base-location\": \"s3://${MINIO_BUCKET}/\", \"polaris.config.drop-with-purge.enabled\": \"true\"}}"
+                echo ""
+                echo "Patched drop-with-purge.enabled on '${CATALOG_NAME}'."
+              fi
               echo "Catalog initialization complete."
 {{- end }}
