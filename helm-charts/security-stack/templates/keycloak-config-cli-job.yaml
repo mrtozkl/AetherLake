@@ -48,6 +48,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.global.existingSecret }}
                   key: ldap-bind-password
+            # Initial (temporary) password of the realm's bootstrap admin user.
+            - name: REALM_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: realm-admin-password
             - name: CONTROL_PANEL_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:

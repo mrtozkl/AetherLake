@@ -6,13 +6,16 @@ import { authOptions } from "../auth/[...nextauth]/route";
 // shapes the verbose table metadata into a UI-friendly form.
 const POLARIS_URL = process.env.POLARIS_URL || "http://core-data-stack-polaris:8181";
 const CLIENT_ID = process.env.POLARIS_CLIENT_ID || "aetherlake-admin";
-const CLIENT_SECRET = process.env.POLARIS_CLIENT_SECRET || "aetherlake-secret";
+// Hardcoded fallback is dev-only; production must supply the real secret.
+const CLIENT_SECRET = process.env.POLARIS_CLIENT_SECRET
+    || (process.env.NODE_ENV === "production" ? "" : "aetherlake-secret");
 const CATALOG = process.env.POLARIS_CATALOG || "lakehouse_catalog";
 
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
 async function getToken(): Promise<string> {
+    if (!CLIENT_SECRET) throw new Error("POLARIS_CLIENT_SECRET must be set in production");
     if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
     const res = await fetch(`${POLARIS_URL}/api/catalog/v1/oauth/tokens`, {
         method: "POST",

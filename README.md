@@ -153,7 +153,7 @@ Add the following to your `/etc/hosts` (or use a local DNS resolver):
 |---------|-----|
 | Control Panel | `http://localhost:3000` |
 | MinIO Console | `http://minio.aetherlake.local` |
-| Trino | `http://trino.aetherlake.local` |
+| Trino | `http://trino.aetherlake.local` (basic auth, user `trino`) |
 | Polaris | `http://polaris.aetherlake.local` |
 | Keycloak | `http://keycloak.aetherlake.local` |
 | Airflow | `http://airflow.aetherlake.local` |
@@ -171,6 +171,29 @@ Retrieve them from the cluster secret, e.g. the Keycloak admin password:
 kubectl get secret aetherlake-credentials -n aetherlake \
   -o jsonpath='{.data.keycloak-admin-password}' | base64 -d
 ```
+
+Other generated credentials in the same secret: `realm-admin-password` (SSO
+`admin` user — password change forced on first login), `superset-admin-password`,
+and `trino-ingress-password` (basic-auth gate in front of the Trino ingress,
+username `trino`; Trino itself trusts the `X-Trino-User` header, so its route
+must never be reachable anonymously).
+
+**HTTPS:** every `*.aetherlake.local` host is also served over TLS, signed by a
+self-signed CA that `install.sh` provisions via cert-manager. Plain HTTP stays
+enabled because the SSO issuer URLs are `http://`. To trust the CA locally:
+
+```bash
+kubectl get secret aetherlake-root-ca -n cert-manager \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d > aetherlake-ca.crt
+# macOS
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain aetherlake-ca.crt
+```
+
+**MinIO SSO access** is attribute-based: a Keycloak user only gets MinIO access
+if their `minio_policy` attribute names a MinIO policy (e.g. `consoleAdmin`,
+`readonly`, `readwrite`). Users without the attribute are denied — the realm's
+`admin` user ships with `consoleAdmin`.
 
 ---
 

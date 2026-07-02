@@ -21,6 +21,11 @@ export async function GET(req: NextRequest) {
     if (!session) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    // Pod logs regularly contain tokens, connection strings and query text —
+    // operator-level data. Restrict to admins.
+    if ((session.user as any)?.role !== 'data-admin') {
+        return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
+    }
 
     const params = new URL(req.url).searchParams;
     const pod = params.get('pod');

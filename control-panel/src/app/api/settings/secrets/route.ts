@@ -10,11 +10,25 @@ const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
 const SECRET_NAME = 'aetherlake-credentials';
 const NAMESPACE = 'aetherlake';
 
-export async function GET(req: Request) {
+// Valid Kubernetes secret data key: alphanumerics, '-', '_' and '.'
+const VALID_KEY = /^[A-Za-z0-9._-]{1,253}$/;
+
+// Reading or mutating the platform credentials secret is an admin operation —
+// a non-admin session must never be able to rotate other services' passwords.
+async function requireAdmin() {
     const session = await getServerSession(authOptions);
     if (!session) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if ((session.user as any)?.role !== 'data-admin') {
+        return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
+    }
+    return null;
+}
+
+export async function GET(req: Request) {
+    const denied = await requireAdmin();
+    if (denied) return denied;
 
     try {
         const res = await k8sApi.readNamespacedSecret({ name: SECRET_NAME, namespace: NAMESPACE });
@@ -37,17 +51,24 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const denied = await requireAdmin();
+    if (denied) return denied;
 
     try {
         const payload = await req.json();
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            return NextResponse.json({ error: 'Payload must be a JSON object' }, { status: 400 });
+        }
 
         const encodedData: Record<string, string> = {};
         for (const [key, value] of Object.entries(payload)) {
-            encodedData[key] = Buffer.from(String(value)).toString('base64');
+            if (!VALID_KEY.test(key)) {
+                return NextResponse.json({ error: `Invalid secret key: ${JSON.stringify(key)}` }, { status: 400 });
+            }
+            if (typeof value !== 'string') {
+                return NextResponse.json({ error: `Value for "${key}" must be a string` }, { status: 400 });
+            }
+            encodedData[key] = Buffer.from(value).toString('base64');
         }
 
         try {

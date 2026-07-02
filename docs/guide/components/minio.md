@@ -59,6 +59,20 @@ tenant config matches the `minio-root-user`/`minio-root-password` keys in
 `CHANGE_ME` placeholders in `values.yaml`.
 :::
 
+## SSO authorization (`minio_policy` attribute)
+
+Console SSO maps the `policy` OIDC claim to a MinIO policy. The claim is filled
+from the Keycloak user attribute **`minio_policy`** (see the `minio` client's
+`policy-mapper` in `aetherlake-realm.json`) — it is **not** granted to everyone.
+A user without the attribute is denied console access. To grant access, set the
+attribute on the user in Keycloak to an existing MinIO policy name:
+
+| `minio_policy` value | Access |
+|----------------------|--------|
+| `consoleAdmin` | Full administration (the realm `admin` user ships with this) |
+| `readwrite` | Read/write on all buckets |
+| `readonly` | Read-only |
+
 ## STS / credential vending
 
 MinIO's STS `AssumeRole` powers Polaris credential vending. The **root account
