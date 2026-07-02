@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/Apache%20Iceberg-4E8EE9?style=for-the-badge" alt="Iceberg" />
   <img src="https://img.shields.io/badge/Trino-DD00A1?style=for-the-badge&logo=trino&logoColor=white" alt="Trino" />
   <img src="https://img.shields.io/badge/MinIO-C72E49?style=for-the-badge&logo=minio&logoColor=white" alt="MinIO" />
-  <img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge" alt="License" />
+  <img src="https://img.shields.io/badge/License-BUSL%201.1-blue?style=for-the-badge" alt="License" />
 </p>
 
 <h1 align="center">⚡ AetherLake: Open-Source Data Lakehouse on Kubernetes</h1>
@@ -226,9 +226,9 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 |---|---|
 | ![SQL IDE](assets/ide.png) | ![Trino catalogs](assets/trino.png) |
 
-| Iceberg table explorer |
-|---|
-| ![Iceberg tables](assets/tables.png) |
+| Apache Polaris catalogs | Iceberg table explorer |
+|---|---|
+| ![Apache Polaris catalogs](assets/polaris.png) | ![Iceberg tables](assets/tables.png) |
 
 ### Running locally
 
@@ -478,7 +478,11 @@ Please make sure your changes:
 
 ## 📄 License
 
-This project is licensed under the **Apache License 2.0** — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Business Source License 1.1 (BUSL-1.1)** — see the [LICENSE](LICENSE) file for details.
+
+In short: the source is freely available, and you can use, modify, and self-host AetherLake at no cost for internal, evaluation, or non-commercial purposes. If you want to monetize it — offer it as a hosted/managed service, embed it in a paid product, or sell services built around it — you need a commercial license, which may include revenue-sharing terms. Reach out to murat.ozkl@gmail.com to discuss. Each release automatically converts to the permissive **Apache License 2.0** four years after publication.
+
+AetherLake also deploys third-party open-source components (Trino, Apache Polaris, Airflow, Superset, Spark, Milvus, Keycloak, PostgreSQL, Redis, MinIO), each under its own license — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for details, in particular a note on MinIO's AGPLv3 licensing.
 
 ---
 

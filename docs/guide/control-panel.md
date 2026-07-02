@@ -19,6 +19,7 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 ## Observability
 
 ![Observability — live pod logs](/observability.png)
+![Observability — metrics & details](/observability-details.png)
 
 The **Observability** page surfaces cluster introspection for every service in the
 `aetherlake` namespace, without leaving the Control Panel:
@@ -49,6 +50,31 @@ kubectl patch deployment metrics-server -n kube-system --type=json \
 
 The logs, events, and details still work without metrics-server — only the usage
 numbers are hidden, and the page shows a notice.
+
+## SQL IDE
+
+![SQL IDE](/ide.png)
+
+The **SQL IDE** is a browser-based SQL editor built on Monaco Editor, with a
+schema explorer for browsing catalogs, schemas, and tables, plus a results
+grid for query output. It talks to Trino directly, so any catalog Trino can
+see (Iceberg, Hive, PostgreSQL, MySQL) is queryable from the same editor.
+
+## Trino Management
+
+![Trino catalogs](/trino.png)
+
+The **Trino Management** page lists configured SQL catalogs and lets you
+create, delete, or reconfigure them (Iceberg, Hive, PostgreSQL, MySQL)
+without editing Helm values by hand.
+
+## Polaris Management
+
+![Apache Polaris catalogs](/polaris.png)
+
+The **Polaris Management** page lists and manages Iceberg REST catalogs and
+namespaces registered with Apache Polaris, including creating new catalogs
+straight from the UI.
 
 ## Iceberg Tables
 

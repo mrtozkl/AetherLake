@@ -49,13 +49,19 @@ export default withMermaid(defineConfig({
           { text: 'MCP Server', link: '/guide/mcp-server' },
           { text: 'Data Pipelines', link: '/guide/pipelines' }
         ]
+      },
+      {
+        text: 'About',
+        items: [
+          { text: 'License', link: '/guide/license' },
+        ]
       }
     ],
     socialLinks: [
       { icon: 'github', link: 'https://github.com/mrtozkl/AetherLake' }
     ],
     footer: {
-      message: 'Released under the Apache 2.0 License.',
+      message: 'Released under the Business Source License 1.1.',
       copyright: 'Built with ❤️ for the open-source data community'
     }
   }
