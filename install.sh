@@ -62,6 +62,17 @@ POLARIS_CREDENTIAL="${POLARIS_CLIENT_ID}:${POLARIS_CLIENT_SECRET}"
 # to STS with it.
 MINIO_POLARIS_ACCESS_KEY="${MINIO_POLARIS_ACCESS_KEY:-polaris}"
 MINIO_POLARIS_SECRET_KEY="$(gen_secret)"
+# Keycloak realm bootstrap user (username: admin). The password is temporary —
+# Keycloak forces a change on first login.
+REALM_ADMIN_PASSWORD="${REALM_ADMIN_PASSWORD:-$(gen_secret)}"
+# Superset: Flask SECRET_KEY (session signing + encrypted DB credentials) and
+# the bootstrap admin password used by the init job.
+SUPERSET_SECRET_KEY="$(gen_secret)"
+SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD:-$(gen_secret)}"
+# Basic-auth gate in front of the Trino ingress host (user: trino). Trino
+# itself is unauthenticated and trusts X-Trino-User, so its ingress route must
+# not be reachable anonymously.
+TRINO_INGRESS_PASSWORD="${TRINO_INGRESS_PASSWORD:-$(gen_secret)}"
 
 # Create a credentials secret from the shared values above. Pass the name as $1.
 create_credentials_secret() {
@@ -90,12 +101,46 @@ create_credentials_secret() {
         --from-literal=polaris-credential="$POLARIS_CREDENTIAL" \
         --from-literal=postgres-password="$POSTGRES_PASSWORD" \
         --from-literal=keycloak-db-password="$KEYCLOAK_DB_PASSWORD" \
-        --from-literal=redis-password="$REDIS_PASSWORD"
+        --from-literal=redis-password="$REDIS_PASSWORD" \
+        --from-literal=realm-admin-password="$REALM_ADMIN_PASSWORD" \
+        --from-literal=superset-secret-key="$SUPERSET_SECRET_KEY" \
+        --from-literal=superset-admin-password="$SUPERSET_ADMIN_PASSWORD" \
+        --from-literal=trino-ingress-password="$TRINO_INGRESS_PASSWORD"
+}
+
+# Add a key to an existing secret only if it is missing — lets upgrades of
+# older installs (whose secret predates newer keys) pick up new credentials
+# without touching existing ones.
+ensure_secret_key() {
+    local secret_name="$1" key="$2" value="$3"
+    local current
+    current="$(kubectl get secret "$secret_name" -n aetherlake -o jsonpath="{.data.$key}" 2>/dev/null || true)"
+    if [ -z "$current" ]; then
+        echo "   Adding missing key '$key' to $secret_name..."
+        kubectl patch secret "$secret_name" -n aetherlake --type merge \
+            -p "{\"data\":{\"$key\":\"$(printf %s "$value" | base64)\"}}"
+    fi
 }
 
 # Primary secret plus the aetherlake-credentials alias referenced by the charts.
 create_credentials_secret open-lake-credentials
 create_credentials_secret aetherlake-credentials
+
+# Keys added after the initial release — backfill them into pre-existing secrets.
+for secret_name in open-lake-credentials aetherlake-credentials; do
+    ensure_secret_key "$secret_name" realm-admin-password "$REALM_ADMIN_PASSWORD"
+    ensure_secret_key "$secret_name" superset-secret-key "$SUPERSET_SECRET_KEY"
+    ensure_secret_key "$secret_name" superset-admin-password "$SUPERSET_ADMIN_PASSWORD"
+    ensure_secret_key "$secret_name" trino-ingress-password "$TRINO_INGRESS_PASSWORD"
+done
+
+# htpasswd secret consumed by the nginx auth-secret annotation on the Trino
+# ingress. Regenerated from the stored password so it stays in sync even when
+# the credentials secret pre-exists.
+TRINO_INGRESS_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-ingress-password}' | base64 -d)"
+kubectl create secret generic trino-ingress-auth -n aetherlake \
+    --from-literal=auth="trino:$(openssl passwd -apr1 "$TRINO_INGRESS_PASSWORD_ACTUAL")" \
+    --dry-run=client -o yaml | kubectl apply -f -
 
 # Airflow secret for the official Apache Airflow chart. One secret holds the
 # three keys the chart references: the metadata DB connection string (pointing at
@@ -113,6 +158,12 @@ fi
 
 echo "   ℹ️  Credentials were randomly generated. Retrieve them with:"
 echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.keycloak-admin-password}' | base64 -d"
+echo "      SSO login (user: admin, password change forced on first login):"
+echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.realm-admin-password}' | base64 -d"
+echo "      Superset admin:"
+echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.superset-admin-password}' | base64 -d"
+echo "      Trino ingress basic auth (user: trino):"
+echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-ingress-password}' | base64 -d"
 
 # 4. Deploy Security Stack
 echo "🛡️ Deploying Security Stack (Keycloak)..."
@@ -179,7 +230,33 @@ helm upgrade --install core-data-stack . -n aetherlake \
     --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET"
 cd ../..
 
-# 6. Apply Ingress
+# 6a. TLS: cert-manager + self-signed AetherLake CA. The ingress serves HTTPS
+# alongside HTTP; trust the CA locally to get warning-free browser access
+# (instructions in aetherlake-tls.yaml).
+if ! kubectl get crd certificates.cert-manager.io &> /dev/null; then
+    echo "🔒 Installing cert-manager..."
+    helm repo add jetstack https://charts.jetstack.io 2>/dev/null || true
+    helm repo update jetstack
+    helm upgrade --install cert-manager jetstack/cert-manager \
+        --namespace cert-manager --create-namespace \
+        --set crds.enabled=true
+else
+    echo "🔒 cert-manager already present. Skipping install."
+fi
+echo "⏳ Waiting for cert-manager webhook..."
+kubectl wait --for=condition=available deployment/cert-manager-webhook \
+    -n cert-manager --timeout=180s || true
+# The webhook can take a few extra seconds to start serving; retry the apply.
+echo "🔏 Applying AetherLake CA issuers..."
+for i in 1 2 3 4 5; do
+    if kubectl apply -f aetherlake-tls.yaml; then
+        break
+    fi
+    echo "   cert-manager webhook not ready yet, retrying ($i/5)..."
+    sleep 10
+done
+
+# 6b. Apply Ingress
 echo "🌐 Applying Ingress rules..."
 kubectl apply -f aetherlake-ingress.yaml
 

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
 
+// "user:pass" for the basic-auth gate on the Trino ingress. Leave unset when
+// TRINO_URL points at the in-cluster service, which has no gate.
+const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
+    ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
+    : {};
+
 export async function POST(req: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
@@ -29,6 +35,7 @@ export async function POST(req: NextRequest) {
                 "X-Trino-User": trinoUser,
                 "X-Trino-Source": "control-panel-ide",
                 "Content-Type": "text/plain",
+                ...TRINO_AUTH_HEADER,
             },
             body: query
         };
@@ -81,6 +88,7 @@ export async function POST(req: NextRequest) {
                         "X-Trino-User": trinoUser,
                         "X-Trino-Source": "control-panel-ide",
                         "Content-Type": "text/plain",
+                        ...TRINO_AUTH_HEADER,
                     },
                     body: undefined
                 } as any;

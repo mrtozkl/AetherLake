@@ -1,0 +1,44 @@
+# Self-signed CA chain for *.aetherlake.local, managed by cert-manager.
+# Applied by install.sh after cert-manager is installed. The ingress resources
+# reference the `aetherlake-ca` ClusterIssuer, which signs per-ingress
+# certificates from the root below.
+#
+# To trust the CA on your machine (removes browser warnings):
+#   kubectl get secret aetherlake-root-ca -n cert-manager \
+#     -o jsonpath='{.data.ca\.crt}' | base64 -d > aetherlake-ca.crt
+#   # macOS: security add-trusted-cert -d -r trustRoot \
+#   #   -k ~/Library/Keychains/login.keychain-db aetherlake-ca.crt
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: aetherlake-selfsigned
+spec:
+  selfSigned: {}
+---
+# Root CA certificate. Lives in the cert-manager namespace so the ClusterIssuer
+# below can read its secret.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: aetherlake-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: AetherLake Local CA
+  secretName: aetherlake-root-ca
+  duration: 87600h # 10 years — local dev CA
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: aetherlake-selfsigned
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: aetherlake-ca
+spec:
+  ca:
+    secretName: aetherlake-root-ca

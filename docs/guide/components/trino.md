@@ -4,8 +4,13 @@ Trino runs distributed SQL over the Iceberg catalog (Polaris) and other sources.
 It is the query engine behind Superset and the Control Panel.
 
 - **Chart:** `trino` `1.42.2` (Trino **480**) from `trinodb.github.io/charts`
-- **Ingress:** `trino.aetherlake.local` → `core-data-stack-trino:8080`
-- **In-cluster:** `http://core-data-stack-trino:8080`
+- **Ingress:** `trino.aetherlake.local` → `core-data-stack-trino:8080` — gated by
+  nginx **basic auth** (user `trino`, password in the `aetherlake-credentials`
+  secret under `trino-ingress-password`). Trino itself runs unauthenticated and
+  trusts the `X-Trino-User` header, so the ingress route must never be open.
+  Clients going through the ingress (e.g. a locally running Control Panel or
+  the MCP server) set `TRINO_BASIC_AUTH=trino:<password>`.
+- **In-cluster:** `http://core-data-stack-trino:8080` (no gate — cluster network only)
 
 ## Architecture
 

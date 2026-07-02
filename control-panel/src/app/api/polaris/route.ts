@@ -4,13 +4,23 @@ import { authOptions } from "../auth/[...nextauth]/route";
 
 const POLARIS_URL = process.env.POLARIS_URL || "http://core-data-stack-polaris:8181";
 const CLIENT_ID = process.env.POLARIS_CLIENT_ID || "aetherlake-admin";
-const CLIENT_SECRET = process.env.POLARIS_CLIENT_SECRET || "aetherlake-secret";
+// A hardcoded fallback secret must never reach a real deployment — require the
+// env var in production, allow the dev placeholder otherwise.
+const CLIENT_SECRET = process.env.POLARIS_CLIENT_SECRET
+    || (process.env.NODE_ENV === "production" ? "" : "aetherlake-secret");
+
+// Only Polaris API surfaces may be proxied; anything else (e.g. /q/ health &
+// metrics, or future admin endpoints) stays internal.
+const ALLOWED_PATH_PREFIXES = ["/api/catalog/", "/api/management/"];
 
 // Token cache for internal client_credentials fallback
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
 async function getBootstrapToken() {
+    if (!CLIENT_SECRET) {
+        throw new Error("POLARIS_CLIENT_SECRET must be set in production");
+    }
     if (cachedToken && Date.now() < tokenExpiry) {
         return cachedToken;
     }
@@ -46,14 +56,25 @@ async function handleProxy(req: NextRequest, method: string) {
     }
 
     const { searchParams } = new URL(req.url);
-    const path = searchParams.get("path") || "";
+    const rawPath = searchParams.get("path") || "";
+    const path = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+
+    // Reject traversal and anything outside the Polaris API allowlist.
+    if (path.includes("..") || !ALLOWED_PATH_PREFIXES.some((p) => path.startsWith(p))) {
+        return NextResponse.json({ error: "Path not allowed" }, { status: 400 });
+    }
 
     // 1. Try to use User's Keycloak Token if available (OIDC Integration)
-    // 2. Fallback to Bootstrap Token for admin tasks or if user is logged in via Credentials
+    // 2. Fall back to the bootstrap token — but only for admins: that token
+    //    carries PRINCIPAL_ROLE:ALL, so handing it to any session would let
+    //    every user act as the Polaris root principal.
     let token = (session as any).accessToken;
     const isUsingUserToken = !!token;
 
     if (!token) {
+        if ((session.user as any)?.role !== "data-admin") {
+            return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 });
+        }
         try {
             token = await getBootstrapToken();
         } catch (e: any) {
@@ -61,7 +82,7 @@ async function handleProxy(req: NextRequest, method: string) {
         }
     }
 
-    const url = `${POLARIS_URL}${path.startsWith("/") ? path : `/${path}`}`;
+    const url = `${POLARIS_URL}${path}`;
 
     const headers: Record<string, string> = {
         "Authorization": `Bearer ${token}`,

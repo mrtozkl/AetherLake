@@ -67,6 +67,21 @@ providers.push(
     })
 )
 
+// Map Keycloak realm roles to the app-level role used by admin-only API routes.
+// The access token arrives directly from Keycloak's token endpoint over the
+// server-side OIDC exchange, so decoding its payload without re-verifying the
+// signature is safe here.
+function roleFromKeycloakToken(accessToken: string): string | undefined {
+    try {
+        const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString("utf-8"))
+        const roles: string[] = payload?.realm_access?.roles || []
+        if (roles.includes("data-admin")) return "data-admin"
+        if (roles.includes("data-engineer")) return "data-engineer"
+        if (roles.includes("data-scientist")) return "data-scientist"
+    } catch { /* malformed token — leave role unset */ }
+    return undefined
+}
+
 export const authOptions = {
     providers,
     secret: nextAuthSecret,
@@ -74,8 +89,11 @@ export const authOptions = {
         async jwt({ token, account, user }: any) {
             if (account) {
                 token.accessToken = account.access_token
+                if (account.provider === "keycloak" && account.access_token) {
+                    token.role = roleFromKeycloakToken(account.access_token) ?? token.role
+                }
             }
-            if (user) {
+            if (user?.role) {
                 token.role = user.role
             }
             return token

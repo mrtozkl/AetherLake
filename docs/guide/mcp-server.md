@@ -24,6 +24,7 @@ Add the following to your `claude_desktop_config.json`:
       "env": {
         "AETHERLAKE_NAMESPACE": "aetherlake",
         "TRINO_URL": "http://trino.aetherlake.local",
+        "TRINO_BASIC_AUTH": "trino:your-trino-ingress-password",
         "POLARIS_URL": "http://polaris.aetherlake.local",
         "AIRFLOW_URL": "http://airflow.aetherlake.local",
         "AIRFLOW_AUTH": "admin:your-airflow-password"
@@ -41,11 +42,11 @@ Make sure to run `npm install` and `npm run build` in the `mcp-server` directory
 |----------|---------|-------------|
 | `AETHERLAKE_NAMESPACE` | `aetherlake` | Kubernetes namespace to operate against |
 | `TRINO_URL` | `http://trino.aetherlake.local` | Trino coordinator base URL |
+| `TRINO_BASIC_AUTH` | *(unset)* | `trino:<password>` for the basic-auth gate on the Trino ingress (`trino-ingress-password` key in `aetherlake-credentials`). Not needed when `TRINO_URL` points at the in-cluster service |
 | `POLARIS_URL` | `http://polaris.aetherlake.local` | Apache Polaris REST catalog base URL |
 | `AIRFLOW_URL` | `http://airflow.aetherlake.local` | Airflow webserver base URL |
-| `AIRFLOW_AUTH` | `admin:admin` | Airflow basic-auth `user:password`, used for DAG operations |
+| `AIRFLOW_AUTH` | *(required for Airflow tools)* | Airflow basic-auth `user:password`, used for DAG operations |
 
-> [!WARNING]
-> `AIRFLOW_AUTH` defaults to `admin:admin` for local development only. Set it to
-> your real Airflow credentials before using the MCP server against any
-> non-local deployment.
+> [!NOTE]
+> `AIRFLOW_AUTH` has no default. The Airflow tools (`list_airflow_dags`,
+> `trigger_airflow_dag`) return a clear error until it is set.

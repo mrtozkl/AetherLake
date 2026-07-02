@@ -12,7 +12,26 @@ const NAMESPACE = process.env.AETHERLAKE_NAMESPACE || "aetherlake";
 const TRINO_URL = process.env.TRINO_URL || "http://trino.aetherlake.local";
 const POLARIS_URL = process.env.POLARIS_URL || "http://polaris.aetherlake.local";
 const AIRFLOW_URL = process.env.AIRFLOW_URL || "http://airflow.aetherlake.local";
-const AIRFLOW_AUTH = Buffer.from(process.env.AIRFLOW_AUTH || "admin:admin").toString("base64");
+// Airflow API credentials must be supplied explicitly ("user:password") — a
+// baked-in default like admin:admin would silently work against misconfigured
+// deployments. Airflow tools return a clear error when unset.
+const AIRFLOW_AUTH = process.env.AIRFLOW_AUTH
+  ? Buffer.from(process.env.AIRFLOW_AUTH).toString("base64")
+  : null;
+
+function requireAirflowAuth(): string {
+  if (!AIRFLOW_AUTH) {
+    throw new Error("AIRFLOW_AUTH env var is not set (expected format: user:password)");
+  }
+  return AIRFLOW_AUTH;
+}
+
+// "user:pass" for the basic-auth gate on the Trino ingress (user: trino,
+// password in the aetherlake-credentials secret, key trino-ingress-password).
+// Leave unset when TRINO_URL points at the in-cluster service directly.
+const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
+  ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
+  : {};
 
 // Kubernetes setup
 const kc = new k8s.KubeConfig();
@@ -145,7 +164,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Note: In a real environment, you'd use a Trino driver or poll the REST API properly.
         // For MCP simplicity, we are hitting the v1/statement endpoint and just fetching the first chunk.
         const response = await axios.post(`${TRINO_URL}/v1/statement`, query, {
-          headers: { 'X-Trino-User': 'aetherlake-mcp', 'Content-Type': 'text/plain' }
+          headers: { 'X-Trino-User': 'aetherlake-mcp', 'Content-Type': 'text/plain', ...TRINO_AUTH_HEADER }
         });
         
         // Polling logic for Trino query execution
@@ -155,7 +174,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         while (nextUri) {
           await new Promise(r => setTimeout(r, 500));
-          const nextRes = await axios.get(nextUri);
+          const nextRes = await axios.get(nextUri, { headers: { ...TRINO_AUTH_HEADER } });
           if (nextRes.data?.data) data.push(...nextRes.data.data);
           if (nextRes.data?.columns && columns.length === 0) columns = nextRes.data.columns;
           nextUri = nextRes.data?.nextUri;
@@ -178,7 +197,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "list_airflow_dags": {
         try {
           const response = await axios.get(`${AIRFLOW_URL}/api/v1/dags`, {
-            headers: { 'Authorization': `Basic ${AIRFLOW_AUTH}` }
+            headers: { 'Authorization': `Basic ${requireAirflowAuth()}` }
           });
           return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
         } catch (e: any) {
@@ -189,8 +208,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "trigger_airflow_dag": {
         try {
           const { dag_id } = request.params.arguments as any;
-          const response = await axios.post(`${AIRFLOW_URL}/api/v1/dags/${dag_id}/dagRuns`, {}, {
-            headers: { 'Authorization': `Basic ${AIRFLOW_AUTH}`, 'Content-Type': 'application/json' }
+          const response = await axios.post(`${AIRFLOW_URL}/api/v1/dags/${encodeURIComponent(dag_id)}/dagRuns`, {}, {
+            headers: { 'Authorization': `Basic ${requireAirflowAuth()}`, 'Content-Type': 'application/json' }
           });
           return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
         } catch (e: any) {
@@ -206,7 +225,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: `Error executing ${request.params.name}: ${error.message}\n${error.stack}`,
+          text: `Error executing ${request.params.name}: ${error.message}`,
         },
       ],
       isError: true,

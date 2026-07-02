@@ -9,8 +9,40 @@ const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
 
 const NAMESPACE = "aetherlake";
 const CONFIGMAP_NAME = "core-data-stack-trino-catalog";
+
+// Catalog names become ConfigMap keys / Trino catalog files — keep them simple.
+const VALID_CATALOG_NAME = /^[a-z][a-z0-9_-]{0,62}$/;
+
+// Catalog .properties files routinely embed credentials (s3 keys, JDBC
+// passwords, OAuth client secrets). Never return those values to the UI.
+const SENSITIVE_PROP = /(password|secret|credential|access-key|apikey|api-key|token)/i;
+
+function redactProps(props: Record<string, string>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(props)) {
+        out[k] = SENSITIVE_PROP.test(k) ? "••••••••" : v;
+    }
+    return out;
+}
+
+async function requireAdmin() {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if ((session.user as any)?.role !== "data-admin") {
+        return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 });
+    }
+    return null;
+}
 // Use the external ingress hostname as fallback so it works when running control-panel locally
 const TRINO_URL = process.env.TRINO_URL || "http://trino.aetherlake.local";
+
+// "user:pass" for the basic-auth gate on the Trino ingress. Leave unset when
+// TRINO_URL points at the in-cluster service, which has no gate.
+const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
+    ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
+    : {};
 
 // Helper: run a Trino SQL query server-side (reuses the polling loop from /api/query)
 async function trinoQuery(sql: string): Promise<{ columns: any[]; data: any[][] }> {
@@ -21,6 +53,7 @@ async function trinoQuery(sql: string): Promise<{ columns: any[]; data: any[][] 
             "X-Trino-User": "admin",
             "X-Trino-Source": "control-panel-trino-mgmt",
             "Content-Type": "text/plain",
+            ...TRINO_AUTH_HEADER,
         },
         body: sql,
     };
@@ -58,6 +91,7 @@ async function trinoQuery(sql: string): Promise<{ columns: any[]; data: any[][] 
                     "X-Trino-User": "admin",
                     "X-Trino-Source": "control-panel-trino-mgmt",
                     "Content-Type": "text/plain",
+                    ...TRINO_AUTH_HEADER,
                 },
             };
             await new Promise((resolve) => setTimeout(resolve, 300));
@@ -136,7 +170,7 @@ export async function GET(req: NextRequest) {
             catalogs.push({
                 name,
                 connector: props["connector.name"] || "unknown",
-                properties: props,
+                properties: redactProps(props),
             });
         }
 
@@ -150,12 +184,11 @@ export async function GET(req: NextRequest) {
     }
 }
 
-// POST: Add a new catalog to the ConfigMap
+// POST: Add a new catalog to the ConfigMap (admin only — catalogs carry
+// credentials and define what data Trino can reach)
 export async function POST(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const denied = await requireAdmin();
+    if (denied) return denied;
 
     try {
         const body = await req.json();
@@ -164,6 +197,13 @@ export async function POST(req: NextRequest) {
         if (!name || !properties) {
             return NextResponse.json(
                 { error: "Catalog name and properties are required" },
+                { status: 400 }
+            );
+        }
+
+        if (typeof name !== "string" || !VALID_CATALOG_NAME.test(name)) {
+            return NextResponse.json(
+                { error: "Invalid catalog name. Use lowercase letters, digits, '-' and '_' (max 63 chars)." },
                 { status: 400 }
             );
         }
@@ -212,19 +252,17 @@ export async function POST(req: NextRequest) {
     }
 }
 
-// DELETE: Remove a catalog from the ConfigMap
+// DELETE: Remove a catalog from the ConfigMap (admin only)
 export async function DELETE(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const denied = await requireAdmin();
+    if (denied) return denied;
 
     try {
         const { searchParams } = new URL(req.url);
         const name = searchParams.get("name");
 
-        if (!name) {
-            return NextResponse.json({ error: "Catalog name is required" }, { status: 400 });
+        if (!name || !VALID_CATALOG_NAME.test(name)) {
+            return NextResponse.json({ error: "Valid catalog name is required" }, { status: 400 });
         }
 
         const filename = `${name}.properties`;
