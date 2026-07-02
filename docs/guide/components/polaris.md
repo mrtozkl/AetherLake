@@ -104,6 +104,38 @@ PUT /api/management/v1/catalogs/{catalog}/catalog-roles/catalog_admin/grants
 { "grant": { "type": "catalog", "privilege": "CATALOG_MANAGE_CONTENT" } }
 ```
 
+## Drop-with-purge (required for `DROP TABLE`)
+
+Trino's `DROP TABLE` against an Iceberg REST catalog requests a **purge** (delete
+the table's data and metadata files), but Polaris refuses purges by default:
+
+```
+Failed to drop table 'X'
+  (Polaris) Unable to purge entity: X. To enable this feature, set the Polaris
+  configuration DROP_WITH_PURGE_ENABLED or the catalog configuration
+  polaris.config.drop-with-purge.enabled
+```
+
+The `polaris-init` Job enables it **per catalog** by setting
+`polaris.config.drop-with-purge.enabled=true` in the catalog `properties` at
+creation. For catalogs created before this was added, the Job also patches the
+property in idempotently (it fetches the catalog's `entityVersion` and PUTs the
+updated properties, skipping the write if the flag is already set):
+
+```bash
+PUT /api/management/v1/catalogs/{catalog}
+{ "currentEntityVersion": <n>,
+  "properties": { "default-base-location": "s3://lakehouse/",
+                  "polaris.config.drop-with-purge.enabled": "true" } }
+```
+
+Verify end-to-end through Trino:
+
+```sql
+CREATE TABLE iceberg.demo.tmp (id int);
+DROP TABLE iceberg.demo.tmp;  -- succeeds once drop-with-purge is enabled
+```
+
 ## Bootstrap / root credentials
 
 | Env | Source | Description |
