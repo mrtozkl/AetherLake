@@ -11,7 +11,7 @@
   },
   "keywords": ["mcp", "aetherlake", "ai", "llm"],
   "author": "",
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN ../LICENSE",
   "dependencies": {
     "@kubernetes/client-node": "^1.4.0",
     "@modelcontextprotocol/sdk": "^1.2.1",
