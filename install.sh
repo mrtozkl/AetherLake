@@ -217,22 +217,11 @@ else
     echo "🪣 MinIO Operator already present. Skipping."
 fi
 
-# 5b. Deploy Core Data Stack
-echo "📊 Deploying Core Data Stack..."
-cd helm-charts/core-data-stack
-helm dependency update
-# Pass the MinIO root credentials and OIDC client secret so the values baked into
-# the tenant config match the cluster secret that Trino/Milvus/Polaris read and
-# the secret provisioned for the `minio` Keycloak client.
-helm upgrade --install core-data-stack . -n aetherlake \
-    --set minio.rootUser="$MINIO_ROOT_USER" \
-    --set minio.rootPassword="$MINIO_ROOT_PASSWORD" \
-    --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET"
-cd ../..
-
-# 6a. TLS: cert-manager + self-signed AetherLake CA. The ingress serves HTTPS
-# alongside HTTP; trust the CA locally to get warning-free browser access
-# (instructions in aetherlake-tls.yaml).
+# 5b. TLS: cert-manager + self-signed AetherLake CA. Installed BEFORE the core
+# data stack because the Flink Kubernetes Operator chart provisions its
+# admission webhook certificates through cert-manager Issuer/Certificate
+# resources. The ingress serves HTTPS alongside HTTP; trust the CA locally to
+# get warning-free browser access (instructions in aetherlake-tls.yaml).
 if ! kubectl get crd certificates.cert-manager.io &> /dev/null; then
     echo "🔒 Installing cert-manager..."
     helm repo add jetstack https://charts.jetstack.io 2>/dev/null || true
@@ -256,7 +245,55 @@ for i in 1 2 3 4 5; do
     sleep 10
 done
 
-# 6b. Apply Ingress
+# 5c. Deploy Core Data Stack
+echo "📊 Deploying Core Data Stack..."
+cd helm-charts/core-data-stack
+helm dependency update
+# Helm only installs CRDs from charts/ on a fresh `helm install`; upgrading an
+# existing release that newly enables kafka/flink would leave the operators
+# without their custom resource definitions. Bootstrap them from the vendored
+# chart archives when missing (server-side apply: the Kafka CRD is too large
+# for client-side apply annotations).
+if ! kubectl get crd kafkas.kafka.strimzi.io &> /dev/null; then
+    STRIMZI_CHART="$(ls charts/strimzi-kafka-operator-*.tgz 2>/dev/null | head -1)"
+    if [ -n "$STRIMZI_CHART" ]; then
+        echo "📦 Installing Strimzi CRDs from $STRIMZI_CHART..."
+        tar -xzOf "$STRIMZI_CHART" 'strimzi-kafka-operator/crds/*' | kubectl apply --server-side -f -
+    fi
+fi
+if ! kubectl get crd flinkdeployments.flink.apache.org &> /dev/null; then
+    FLINK_OPERATOR_CHART="$(ls charts/flink-kubernetes-operator-*.tgz 2>/dev/null | head -1)"
+    if [ -n "$FLINK_OPERATOR_CHART" ]; then
+        echo "📦 Installing Flink operator CRDs from $FLINK_OPERATOR_CHART..."
+        tar -xzOf "$FLINK_OPERATOR_CHART" 'flink-kubernetes-operator/crds/*' | kubectl apply --server-side -f -
+    fi
+fi
+# Pass the MinIO root credentials and OIDC client secret so the values baked into
+# the tenant config match the cluster secret that Trino/Milvus/Polaris read and
+# the secret provisioned for the `minio` Keycloak client.
+helm upgrade --install core-data-stack . -n aetherlake \
+    --set minio.rootUser="$MINIO_ROOT_USER" \
+    --set minio.rootPassword="$MINIO_ROOT_PASSWORD" \
+    --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET"
+cd ../..
+
+# 5d. Build the Flink SQL runner image used by SQL jobs submitted from the
+# Control Panel (vendored in pipelines/flink/sql-runner). Only needed when the
+# flink component is enabled; Docker Desktop shares locally built images with
+# its Kubernetes cluster, so no registry push is required.
+FLINK_ENABLED="$(awk '/^flink:/{f=1; next} f && /^[[:space:]]+enabled:/{print $2; exit}' helm-charts/core-data-stack/values.yaml)"
+if [ "$FLINK_ENABLED" = "true" ]; then
+    if command -v docker &> /dev/null; then
+        echo "🐳 Building Flink SQL runner image (aetherlake/flink-sql-runner:flink-2.1)..."
+        docker build -t aetherlake/flink-sql-runner:flink-2.1 pipelines/flink/sql-runner
+    else
+        echo "⚠️  docker not found — skipping flink-sql-runner image build."
+        echo "   Flink SQL jobs submitted from the Control Panel need it; build manually:"
+        echo "   docker build -t aetherlake/flink-sql-runner:flink-2.1 pipelines/flink/sql-runner"
+    fi
+fi
+
+# 6. Apply Ingress
 echo "🌐 Applying Ingress rules..."
 kubectl apply -f aetherlake-ingress.yaml
 

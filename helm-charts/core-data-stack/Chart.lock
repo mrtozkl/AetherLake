@@ -17,5 +17,11 @@ dependencies:
 - name: superset
   repository: https://apache.github.io/superset
   version: 0.12.8
-digest: sha256:0bbdc2958172367cfc52dbc5f3610fc72ff0aba2fc1983f96ea720496d90a648
-generated: "2026-06-22T00:07:28.645896+03:00"
+- name: strimzi-kafka-operator
+  repository: https://strimzi.io/charts/
+  version: 1.1.0
+- name: flink-kubernetes-operator
+  repository: https://downloads.apache.org/flink/flink-kubernetes-operator-1.15.0/
+  version: 1.15.0
+digest: sha256:bb62e558e87958f24d99ceac6de0960a3d1a4de3368adc779b9d93355ae9de4d
+generated: "2026-08-04T22:00:41.231063+03:00"

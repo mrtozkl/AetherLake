@@ -17,6 +17,11 @@ const SERVICE_POD_MAP: Record<string, { label: string; value: string }> = {
     'Apache Superset': { label: 'app', value: 'superset' },
     'Milvus Vector Search': { label: 'app.kubernetes.io/name', value: 'milvus' },
     'Apache Polaris': { label: 'app', value: 'polaris' },
+    // Strimzi broker/node pods carry strimzi.io/kind=Kafka; the operator itself
+    // is strimzi.io/kind=cluster-operator and not counted here.
+    'Apache Kafka': { label: 'strimzi.io/kind', value: 'Kafka' },
+    // The operator pod: per-job Flink clusters come and go with each SQL job.
+    'Apache Flink': { label: 'app.kubernetes.io/name', value: 'flink-kubernetes-operator' },
     'Keycloak': { label: 'app.kubernetes.io/name', value: 'keycloak' },
 };
 
