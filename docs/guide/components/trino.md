@@ -5,11 +5,10 @@ It is the query engine behind Superset and the Control Panel.
 
 - **Chart:** `trino` `1.42.2` (Trino **480**) from `trinodb.github.io/charts`
 - **Ingress:** `trino.aetherlake.local` → `core-data-stack-trino:8080` — gated by
-  nginx **basic auth** (user `trino`, password in the `aetherlake-credentials`
-  secret under `trino-ingress-password`). Trino itself runs unauthenticated and
-  trusts the `X-Trino-User` header, so the ingress route must never be open.
-  Clients going through the ingress (e.g. a locally running Control Panel or
-  the MCP server) set `TRINO_BASIC_AUTH=trino:<password>`.
+  **Keycloak SSO** through oauth2-proxy (nginx external auth). Trino itself runs
+  unauthenticated and trusts the `X-Trino-User` header, so the ingress route
+  must never be open. The Control Panel and the MCP server call Trino through
+  the in-cluster service and are unaffected by the gate.
 - **In-cluster:** `http://core-data-stack-trino:8080` (no gate — cluster network only)
 
 ## Architecture
@@ -48,6 +47,26 @@ s3.path-style-access=true
 only supported since Trino 458 — hence the chart bump to Trino 480.
 :::
 
+## The `kafka` catalog
+
+Kafka topics are queryable as SQL tables, so data streamed by Flink SQL jobs
+(e.g. the datagen → `events` pipeline) can be inspected with ordinary Trino
+SQL — including from the Control Panel SQL IDE:
+
+```sql
+SELECT * FROM kafka.aetherlake.events LIMIT 10;
+-- event_ts arrives as text (Flink's json format writes SQL timestamps):
+SELECT parse_datetime(event_ts, 'yyyy-MM-dd HH:mm:ss.SSS') FROM kafka.aetherlake.events;
+```
+
+- Catalog properties: `trino.additionalCatalogs.kafka`
+  (`kafka.nodes=aetherlake-kafka-bootstrap:9092`, `FILE` table-description
+  supplier reading `/etc/trino/schemas`).
+- Column schemas come from `trino.kafka.tableDescriptions` (one JSON file per
+  topic, mounted by the trino subchart). Add an entry there for every new
+  topic; the `events` description mirrors `pipelines/flink/examples/
+  datagen-to-kafka.sql`.
+
 ## Key settings (`core-data-stack/values.yaml` → `trino`)
 
 | Setting | Default | Description |
@@ -55,6 +74,8 @@ only supported since Trino 458 — hence the chart bump to Trino 480.
 | `trino.enabled` | `true` | Toggle Trino |
 | `trino.server.workers` | `2` | Number of worker pods |
 | `trino.additionalCatalogs.iceberg` | *(see above)* | Iceberg/Polaris catalog |
+| `trino.additionalCatalogs.kafka` | *(see above)* | Kafka connector catalog |
+| `trino.kafka.tableDescriptions` | `events.json` | Per-topic JSON schemas for the kafka catalog |
 | `trino.additionalConfigProperties` | `["http-server.process-forwarded=true"]` | Accept ingress `X-Forwarded-*` headers (see below) |
 | `trino.env[MINIO_ACCESS_KEY]` | secret `minio-root-user` | S3 access key |
 | `trino.env[MINIO_SECRET_KEY]` | secret `minio-root-password` | S3 secret key |

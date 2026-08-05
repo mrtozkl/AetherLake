@@ -61,5 +61,9 @@ spec:
   ## Expose Console on port 9001
   exposeServices:
     console: true
-    minio: true
+    # The S3 API stays cluster-internal: exposing it as a LoadBalancer would
+    # claim localhost:80 on Docker Desktop and collide with ingress-nginx,
+    # which serves the *.aetherlake.local hosts. Trino/Polaris/Milvus reach
+    # MinIO through the in-cluster services.
+    minio: false
 {{- end }}

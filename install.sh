@@ -42,6 +42,11 @@ MILVUS_OIDC_SECRET="$(gen_secret)"
 CONTROL_PANEL_OIDC_SECRET="$(gen_secret)"
 SUPERSET_OIDC_SECRET="$(gen_secret)"
 MINIO_OIDC_SECRET="$(gen_secret)"
+# SSO gate for UIs without native OIDC (Trino UI, Milvus Attu): oauth2-proxy
+# client secret plus the cookie signing secret (16 random bytes base64-encoded,
+# the key size oauth2-proxy requires).
+OAUTH2_PROXY_OIDC_SECRET="$(gen_secret)"
+OAUTH2_PROXY_COOKIE_SECRET="$(openssl rand -base64 16)"
 LDAP_BIND_PASSWORD="$(gen_secret)"
 # Shared maintained datastores (official postgres/redis images) used by Superset
 # and Airflow instead of the retired Bitnami images.
@@ -92,6 +97,8 @@ create_credentials_secret() {
         --from-literal=control-panel-oidc-secret="$CONTROL_PANEL_OIDC_SECRET" \
         --from-literal=superset-oidc-secret="$SUPERSET_OIDC_SECRET" \
         --from-literal=minio-oidc-secret="$MINIO_OIDC_SECRET" \
+        --from-literal=oauth2-proxy-oidc-secret="$OAUTH2_PROXY_OIDC_SECRET" \
+        --from-literal=oauth2-proxy-cookie-secret="$OAUTH2_PROXY_COOKIE_SECRET" \
         --from-literal=minio-polaris-access-key="$MINIO_POLARIS_ACCESS_KEY" \
         --from-literal=minio-polaris-secret-key="$MINIO_POLARIS_SECRET_KEY" \
         --from-literal=keycloak-admin-password="$KEYCLOAK_ADMIN_PASSWORD" \
@@ -132,6 +139,8 @@ for secret_name in open-lake-credentials aetherlake-credentials; do
     ensure_secret_key "$secret_name" superset-secret-key "$SUPERSET_SECRET_KEY"
     ensure_secret_key "$secret_name" superset-admin-password "$SUPERSET_ADMIN_PASSWORD"
     ensure_secret_key "$secret_name" trino-ingress-password "$TRINO_INGRESS_PASSWORD"
+    ensure_secret_key "$secret_name" oauth2-proxy-oidc-secret "$OAUTH2_PROXY_OIDC_SECRET"
+    ensure_secret_key "$secret_name" oauth2-proxy-cookie-secret "$OAUTH2_PROXY_COOKIE_SECRET"
 done
 
 # htpasswd secret consumed by the nginx auth-secret annotation on the Trino
@@ -303,7 +312,23 @@ if [ "$FLINK_ENABLED" = "true" ]; then
     fi
 fi
 
-# 6. Apply Ingress
+# 6. Ingress controller — required for the *.aetherlake.local ingress rules
+# applied below. Installs into its own namespace; the controller's
+# LoadBalancer binds localhost:80/443 (the MinIO S3 API deliberately stays
+# cluster-internal to avoid colliding on port 80).
+if ! kubectl get deployment ingress-nginx-controller -n ingress-nginx &> /dev/null; then
+    echo "🌐 Installing ingress-nginx controller..."
+    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 2>/dev/null || true
+    helm repo update ingress-nginx
+    helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+        --namespace ingress-nginx --create-namespace
+else
+    echo "🌐 ingress-nginx already present. Skipping install."
+fi
+echo "⏳ Waiting for ingress-nginx controller..."
+kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=300s
+
+# 7. Apply Ingress
 echo "🌐 Applying Ingress rules..."
 kubectl apply -f aetherlake-ingress.yaml
 

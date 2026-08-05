@@ -58,7 +58,7 @@ const SERVICES = [
         descKey: "ext.kafkaDesc" as const,
         icon: Radio,
         iconColor: "text-success",
-        url: "/flink",
+        url: "/kafka",
     },
     {
         nameKey: "ext.flink" as const,

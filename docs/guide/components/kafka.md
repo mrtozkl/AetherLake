@@ -41,6 +41,28 @@ switch the listener to `tls: true` with SCRAM-SHA-512 or OAuth auth
 (`KafkaUser` CRs are supported by the bundled user operator).
 :::
 
+## Querying topics with Trino
+
+Topics are exposed as Trino tables through the `kafka` connector catalog, so
+data streamed by Flink SQL jobs is queryable with ordinary SQL:
+
+```sql
+SELECT * FROM kafka.aetherlake.events LIMIT 10;
+```
+
+Column schemas come from the JSON table descriptions in
+`trino.kafka.tableDescriptions` (see [Trino](./trino#the-kafka-catalog)). Add a
+description file whenever a new topic should be queryable.
+
+## Control Panel
+
+The Control Panel ships a Kafka view (`/kafka`, linked from the Overview
+dashboard): cluster status and version, broker health, and the topic list with
+partitions, replicas, config and reconciliation conditions — served through
+`/api/kafka` against the Strimzi CRs, protected by the usual session auth.
+The Flink SQL editor also lists topics and inserts a Kafka source-table
+template on click.
+
 ## Operations
 
 ```bash
@@ -67,4 +89,5 @@ EOF
 ## Related
 
 - [Flink — Stream Processing](./flink) — submits SQL jobs that read/write Kafka topics
+- [Trino — Federated SQL](./trino) — queries Kafka topics through the `kafka` catalog
 - [Data Pipelines](../pipelines) — `pipelines/flink/examples` contains ready-to-submit SQL

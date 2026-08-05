@@ -153,6 +153,7 @@ Add the following to your `/etc/hosts` (or use a local DNS resolver):
 127.0.0.1  airflow.aetherlake.local
 127.0.0.1  milvus.aetherlake.local
 127.0.0.1  superset.aetherlake.local
+127.0.0.1  oauth2.aetherlake.local
 ```
 
 ### 7. Access the platform
@@ -161,12 +162,12 @@ Add the following to your `/etc/hosts` (or use a local DNS resolver):
 |---------|-----|
 | Control Panel | `http://localhost:3000` |
 | MinIO Console | `http://minio.aetherlake.local` |
-| Trino | `http://trino.aetherlake.local` (basic auth, user `trino`) |
+| Trino | `http://trino.aetherlake.local` (Keycloak SSO) |
 | Polaris | `http://polaris.aetherlake.local` |
 | Keycloak | `http://keycloak.aetherlake.local` |
 | Airflow | `http://airflow.aetherlake.local` |
 | Superset | `http://superset.aetherlake.local` |
-| Milvus (Attu) | `http://milvus.aetherlake.local` |
+| Milvus (Attu) | `http://milvus.aetherlake.local` (Keycloak SSO) |
 
 **Control Panel (local dev login):** `admin` / `admin` — this username/password
 provider is only enabled when the Control Panel runs outside production
