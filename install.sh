@@ -270,11 +270,21 @@ if ! kubectl get crd flinkdeployments.flink.apache.org &> /dev/null; then
 fi
 # Pass the MinIO root credentials and OIDC client secret so the values baked into
 # the tenant config match the cluster secret that Trino/Milvus/Polaris read and
-# the secret provisioned for the `minio` Keycloak client.
+# the secret provisioned for the `minio` Keycloak client. Re-read them from the
+# (possibly pre-existing) secret instead of using the shell variables: on a
+# re-run the secret is kept while gen_secret would have produced fresh values,
+# and the drift breaks every MinIO client (signature mismatch).
+MINIO_ROOT_USER_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-root-user}' | base64 -d)"
+MINIO_ROOT_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-root-password}' | base64 -d)"
+MINIO_OIDC_SECRET_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-oidc-secret}' | base64 -d)"
+# --skip-crds: the CRDs above are bootstrapped with kubectl server-side apply
+# (or already exist on upgrades); letting helm apply its crds/ copy on top
+# fails with a field-manager conflict on .spec.versions during fresh installs.
 helm upgrade --install core-data-stack . -n aetherlake \
-    --set minio.rootUser="$MINIO_ROOT_USER" \
-    --set minio.rootPassword="$MINIO_ROOT_PASSWORD" \
-    --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET"
+    --skip-crds \
+    --set minio.rootUser="$MINIO_ROOT_USER_ACTUAL" \
+    --set minio.rootPassword="$MINIO_ROOT_PASSWORD_ACTUAL" \
+    --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET_ACTUAL"
 cd ../..
 
 # 5d. Build the Flink SQL runner image used by SQL jobs submitted from the
