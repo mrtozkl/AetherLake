@@ -12,6 +12,10 @@ metadata:
     # backing Services. Forcing a redirect here would break those flows.
     # HTTPS is served in parallel for clients that trust the AetherLake CA.
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # oauth2.aetherlake.local is served from this ingress: the session cookie
+    # oauth2-proxy sets on /oauth2/callback carries the Keycloak tokens and
+    # exceeds nginx's default 4k upstream header buffer (502 without this).
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
 spec:
   tls:
     - hosts:
