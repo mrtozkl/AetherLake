@@ -13,6 +13,8 @@ Reference** in the sidebar.
 | **[Apache Airflow](https://airflow.apache.org/)** | Workflow orchestration | 2.10.5 (chart 1.16.0) | [Airflow — Orchestration](./components/airflow) |
 | **[Apache Superset](https://superset.apache.org/)** | BI & dashboards | 3.1.2 (chart 0.12.8) | [Superset — BI](./components/superset) |
 | **[Apache Spark](https://spark.apache.org/)** | Distributed data processing | operator 1.1.27 | [Spark — Processing](./components/spark) |
+| **[Apache Kafka](https://kafka.apache.org/)** | Distributed streaming platform | 4.3.0 (Strimzi 1.1.0) | [Kafka — Streaming](./components/kafka) |
+| **[Apache Flink](https://flink.apache.org/)** | Stream processing (Flink SQL jobs) | 2.1 (operator 1.15.0) | [Flink — Stream Processing](./components/flink) |
 | **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | [Milvus — Vector DB](./components/milvus) |
 | **[PostgreSQL](https://www.postgresql.org/)** | Metadata datastore (shared + Keycloak) | 16-alpine | [PostgreSQL — Datastores](./components/postgres) |
 | **[dbt](https://www.getdbt.com/)** | SQL-based data transformation | — | [Data Pipelines](./pipelines) |
@@ -24,7 +26,7 @@ Reference** in the sidebar.
 | Chart | Components |
 |-------|-----------|
 | **`security-stack`** | Keycloak + keycloak-postgres |
-| **`core-data-stack`** | MinIO, Trino, Polaris, Spark, Airflow, Superset, Milvus, shared postgres/redis |
+| **`core-data-stack`** | MinIO, Trino, Polaris, Spark, Airflow, Superset, Kafka (Strimzi), Flink (operator), Milvus, shared postgres/redis |
 
 ## Shared infrastructure
 

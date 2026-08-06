@@ -42,6 +42,11 @@ MILVUS_OIDC_SECRET="$(gen_secret)"
 CONTROL_PANEL_OIDC_SECRET="$(gen_secret)"
 SUPERSET_OIDC_SECRET="$(gen_secret)"
 MINIO_OIDC_SECRET="$(gen_secret)"
+# SSO gate for UIs without native OIDC (Trino UI, Milvus Attu): oauth2-proxy
+# client secret plus the cookie signing secret (16 random bytes base64-encoded,
+# the key size oauth2-proxy requires).
+OAUTH2_PROXY_OIDC_SECRET="$(gen_secret)"
+OAUTH2_PROXY_COOKIE_SECRET="$(openssl rand -base64 16)"
 LDAP_BIND_PASSWORD="$(gen_secret)"
 # Shared maintained datastores (official postgres/redis images) used by Superset
 # and Airflow instead of the retired Bitnami images.
@@ -92,6 +97,8 @@ create_credentials_secret() {
         --from-literal=control-panel-oidc-secret="$CONTROL_PANEL_OIDC_SECRET" \
         --from-literal=superset-oidc-secret="$SUPERSET_OIDC_SECRET" \
         --from-literal=minio-oidc-secret="$MINIO_OIDC_SECRET" \
+        --from-literal=oauth2-proxy-oidc-secret="$OAUTH2_PROXY_OIDC_SECRET" \
+        --from-literal=oauth2-proxy-cookie-secret="$OAUTH2_PROXY_COOKIE_SECRET" \
         --from-literal=minio-polaris-access-key="$MINIO_POLARIS_ACCESS_KEY" \
         --from-literal=minio-polaris-secret-key="$MINIO_POLARIS_SECRET_KEY" \
         --from-literal=keycloak-admin-password="$KEYCLOAK_ADMIN_PASSWORD" \
@@ -132,6 +139,8 @@ for secret_name in open-lake-credentials aetherlake-credentials; do
     ensure_secret_key "$secret_name" superset-secret-key "$SUPERSET_SECRET_KEY"
     ensure_secret_key "$secret_name" superset-admin-password "$SUPERSET_ADMIN_PASSWORD"
     ensure_secret_key "$secret_name" trino-ingress-password "$TRINO_INGRESS_PASSWORD"
+    ensure_secret_key "$secret_name" oauth2-proxy-oidc-secret "$OAUTH2_PROXY_OIDC_SECRET"
+    ensure_secret_key "$secret_name" oauth2-proxy-cookie-secret "$OAUTH2_PROXY_COOKIE_SECRET"
 done
 
 # htpasswd secret consumed by the nginx auth-secret annotation on the Trino
@@ -217,22 +226,11 @@ else
     echo "🪣 MinIO Operator already present. Skipping."
 fi
 
-# 5b. Deploy Core Data Stack
-echo "📊 Deploying Core Data Stack..."
-cd helm-charts/core-data-stack
-helm dependency update
-# Pass the MinIO root credentials and OIDC client secret so the values baked into
-# the tenant config match the cluster secret that Trino/Milvus/Polaris read and
-# the secret provisioned for the `minio` Keycloak client.
-helm upgrade --install core-data-stack . -n aetherlake \
-    --set minio.rootUser="$MINIO_ROOT_USER" \
-    --set minio.rootPassword="$MINIO_ROOT_PASSWORD" \
-    --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET"
-cd ../..
-
-# 6a. TLS: cert-manager + self-signed AetherLake CA. The ingress serves HTTPS
-# alongside HTTP; trust the CA locally to get warning-free browser access
-# (instructions in aetherlake-tls.yaml).
+# 5b. TLS: cert-manager + self-signed AetherLake CA. Installed BEFORE the core
+# data stack because the Flink Kubernetes Operator chart provisions its
+# admission webhook certificates through cert-manager Issuer/Certificate
+# resources. The ingress serves HTTPS alongside HTTP; trust the CA locally to
+# get warning-free browser access (instructions in aetherlake-tls.yaml).
 if ! kubectl get crd certificates.cert-manager.io &> /dev/null; then
     echo "🔒 Installing cert-manager..."
     helm repo add jetstack https://charts.jetstack.io 2>/dev/null || true
@@ -256,7 +254,81 @@ for i in 1 2 3 4 5; do
     sleep 10
 done
 
-# 6b. Apply Ingress
+# 5c. Deploy Core Data Stack
+echo "📊 Deploying Core Data Stack..."
+cd helm-charts/core-data-stack
+helm dependency update
+# Helm only installs CRDs from charts/ on a fresh `helm install`; upgrading an
+# existing release that newly enables kafka/flink would leave the operators
+# without their custom resource definitions. Bootstrap them from the vendored
+# chart archives when missing (server-side apply: the Kafka CRD is too large
+# for client-side apply annotations).
+if ! kubectl get crd kafkas.kafka.strimzi.io &> /dev/null; then
+    STRIMZI_CHART="$(ls charts/strimzi-kafka-operator-*.tgz 2>/dev/null | head -1)"
+    if [ -n "$STRIMZI_CHART" ]; then
+        echo "📦 Installing Strimzi CRDs from $STRIMZI_CHART..."
+        tar -xzOf "$STRIMZI_CHART" 'strimzi-kafka-operator/crds/*' | kubectl apply --server-side -f -
+    fi
+fi
+if ! kubectl get crd flinkdeployments.flink.apache.org &> /dev/null; then
+    FLINK_OPERATOR_CHART="$(ls charts/flink-kubernetes-operator-*.tgz 2>/dev/null | head -1)"
+    if [ -n "$FLINK_OPERATOR_CHART" ]; then
+        echo "📦 Installing Flink operator CRDs from $FLINK_OPERATOR_CHART..."
+        tar -xzOf "$FLINK_OPERATOR_CHART" 'flink-kubernetes-operator/crds/*' | kubectl apply --server-side -f -
+    fi
+fi
+# Pass the MinIO root credentials and OIDC client secret so the values baked into
+# the tenant config match the cluster secret that Trino/Milvus/Polaris read and
+# the secret provisioned for the `minio` Keycloak client. Re-read them from the
+# (possibly pre-existing) secret instead of using the shell variables: on a
+# re-run the secret is kept while gen_secret would have produced fresh values,
+# and the drift breaks every MinIO client (signature mismatch).
+MINIO_ROOT_USER_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-root-user}' | base64 -d)"
+MINIO_ROOT_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-root-password}' | base64 -d)"
+MINIO_OIDC_SECRET_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-oidc-secret}' | base64 -d)"
+# --skip-crds: the CRDs above are bootstrapped with kubectl server-side apply
+# (or already exist on upgrades); letting helm apply its crds/ copy on top
+# fails with a field-manager conflict on .spec.versions during fresh installs.
+helm upgrade --install core-data-stack . -n aetherlake \
+    --skip-crds \
+    --set minio.rootUser="$MINIO_ROOT_USER_ACTUAL" \
+    --set minio.rootPassword="$MINIO_ROOT_PASSWORD_ACTUAL" \
+    --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET_ACTUAL"
+cd ../..
+
+# 5d. Build the Flink SQL runner image used by SQL jobs submitted from the
+# Control Panel (vendored in pipelines/flink/sql-runner). Only needed when the
+# flink component is enabled; Docker Desktop shares locally built images with
+# its Kubernetes cluster, so no registry push is required.
+FLINK_ENABLED="$(awk '/^flink:/{f=1; next} f && /^[[:space:]]+enabled:/{print $2; exit}' helm-charts/core-data-stack/values.yaml)"
+if [ "$FLINK_ENABLED" = "true" ]; then
+    if command -v docker &> /dev/null; then
+        echo "🐳 Building Flink SQL runner image (aetherlake/flink-sql-runner:flink-2.1)..."
+        docker build -t aetherlake/flink-sql-runner:flink-2.1 pipelines/flink/sql-runner
+    else
+        echo "⚠️  docker not found — skipping flink-sql-runner image build."
+        echo "   Flink SQL jobs submitted from the Control Panel need it; build manually:"
+        echo "   docker build -t aetherlake/flink-sql-runner:flink-2.1 pipelines/flink/sql-runner"
+    fi
+fi
+
+# 6. Ingress controller — required for the *.aetherlake.local ingress rules
+# applied below. Installs into its own namespace; the controller's
+# LoadBalancer binds localhost:80/443 (the MinIO S3 API deliberately stays
+# cluster-internal to avoid colliding on port 80).
+if ! kubectl get deployment ingress-nginx-controller -n ingress-nginx &> /dev/null; then
+    echo "🌐 Installing ingress-nginx controller..."
+    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 2>/dev/null || true
+    helm repo update ingress-nginx
+    helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+        --namespace ingress-nginx --create-namespace
+else
+    echo "🌐 ingress-nginx already present. Skipping install."
+fi
+echo "⏳ Waiting for ingress-nginx controller..."
+kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=300s
+
+# 7. Apply Ingress
 echo "🌐 Applying Ingress rules..."
 kubectl apply -f aetherlake-ingress.yaml
 

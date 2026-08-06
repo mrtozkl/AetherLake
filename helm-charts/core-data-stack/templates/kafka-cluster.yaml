@@ -1,0 +1,83 @@
+{{- if .Values.kafka.enabled }}
+# Apache Kafka cluster managed by the Strimzi operator (see the
+# strimzi-kafka-operator dependency in Chart.yaml). Runs in KRaft mode with a
+# single dual-role (controller + broker) node pool, sized for a local dev
+# cluster. Flink SQL jobs reach it through the bootstrap service
+# {{ .Values.kafka.cluster.name }}-kafka-bootstrap:9092.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: combined
+  namespace: {{ .Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ .Values.kafka.cluster.name }}
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  replicas: {{ .Values.kafka.cluster.replicas | default 1 }}
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: {{ .Values.kafka.cluster.storageSize | default "10Gi" }}
+        {{- if .Values.kafka.cluster.storageClassName }}
+        class: {{ .Values.kafka.cluster.storageClassName }}
+        {{- end }}
+        deleteClaim: false
+        kraftMetadata: shared
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ .Values.kafka.cluster.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  kafka:
+    version: {{ .Values.kafka.cluster.version | default "4.3.0" | quote }}
+    metadataVersion: {{ .Values.kafka.cluster.metadataVersion | default "4.3-IV0" | quote }}
+    listeners:
+      # Plaintext listener for in-cluster clients (Flink, Airflow, apps).
+      # Not exposed through any ingress; enable TLS + auth here before
+      # exposing Kafka outside the cluster.
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+    config:
+      # Single-broker dev cluster: every topic must be fully replicated on one
+      # node. Raise these together with kafka.cluster.replicas for production.
+      offsets.topic.replication.factor: {{ .Values.kafka.cluster.replicationFactor | default 1 }}
+      transaction.state.log.replication.factor: {{ .Values.kafka.cluster.replicationFactor | default 1 }}
+      transaction.state.log.min.isr: {{ .Values.kafka.cluster.minInSyncReplicas | default 1 }}
+      default.replication.factor: {{ .Values.kafka.cluster.replicationFactor | default 1 }}
+      min.insync.replicas: {{ .Values.kafka.cluster.minInSyncReplicas | default 1 }}
+  entityOperator:
+    # The topic operator reconciles the KafkaTopic resources below; the user
+    # operator is included so KafkaUser SCRAM/TLS credentials can be added
+    # later without redeploying the entity operator.
+    topicOperator: {}
+    userOperator: {}
+{{- range .Values.kafka.topics }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ $.Values.kafka.cluster.name }}
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  partitions: {{ .partitions | default 3 }}
+  replicas: {{ .replicas | default 1 }}
+{{- end }}
+{{- end }}

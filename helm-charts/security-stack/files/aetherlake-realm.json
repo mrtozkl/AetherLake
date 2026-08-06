@@ -75,6 +75,29 @@
       ]
     },
     {
+      "clientId": "oauth2-proxy",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "$(env:OAUTH2_PROXY_CLIENT_SECRET)",
+      "redirectUris": ["http://oauth2.aetherlake.local/*"],
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "group-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "groups",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "airflow",
       "enabled": true,
       "publicClient": false,

@@ -88,6 +88,20 @@ trino:
           name: open-lake-credentials
           key: polaris-credential
   additionalCatalogs:
+    # Kafka connector: exposes Kafka topics as SQL tables so data streamed by
+    # Flink SQL jobs (e.g. the datagen -> 'events' pipeline) is queryable from
+    # Trino and the Control Panel SQL IDE. Table schemas come from the JSON
+    # description files mounted from trino.kafka.tableDescriptions below.
+    kafka: |-
+      connector.name=kafka
+      kafka.nodes=aetherlake-kafka-bootstrap:9092
+      kafka.default-schema=aetherlake
+      kafka.table-description-supplier=FILE
+      kafka.table-description-dir=/etc/trino/schemas
+      # The FILE supplier only loads descriptions for tables listed here
+      # (schema.table). Keep in sync with trino.kafka.tableDescriptions below.
+      kafka.table-names=aetherlake.events
+      kafka.hide-internal-columns=false
     iceberg: |-
       connector.name=iceberg
       iceberg.catalog.type=rest
@@ -109,6 +123,40 @@ trino:
       s3.aws-access-key=${ENV:MINIO_ACCESS_KEY}
       s3.aws-secret-key=${ENV:MINIO_SECRET_KEY}
       s3.path-style-access=true
+  # Kafka table descriptions (mounted at kafka.mountPath=/etc/trino/schemas by
+  # the trino subchart). One JSON file per topic; add an entry here whenever a
+  # new topic should be queryable through Trino. Column types follow the JSON
+  # written by Flink SQL kafka sinks ('format' = 'json').
+  kafka:
+    tableDescriptions:
+      # Schema of pipelines/flink/examples/datagen-to-kafka.sql. event_ts is
+      # VARCHAR because the kafka connector only parses ISO-8601 timestamps
+      # while Flink's json format emits SQL format ("2026-08-05 16:42:26.739");
+      # use parse_datetime(event_ts, 'yyyy-MM-dd HH:mm:ss.SSS') to convert.
+      events.json: |-
+        {
+          "tableName": "events",
+          "schemaName": "aetherlake",
+          "topicName": "events",
+          "message": {
+            "dataFormat": "json",
+            "fields": [
+              { "name": "event_id", "mapping": "event_id", "type": "VARCHAR" },
+              { "name": "user_id", "mapping": "user_id", "type": "VARCHAR" },
+              { "name": "event_type", "mapping": "event_type", "type": "VARCHAR" },
+              { "name": "event_ts", "mapping": "event_ts", "type": "VARCHAR" }
+            ]
+          }
+        }
+
+# Keycloak SSO gate for web UIs without native OIDC support (Trino UI, Milvus
+# Attu). An oauth2-proxy deployment sits behind nginx external-auth: anonymous
+# browser requests are redirected through the Keycloak OIDC flow and the
+# session cookie is shared across *.aetherlake.local. Apps with native OIDC
+# (Superset, Airflow, MinIO) keep their own flows and are not double-gated.
+sso:
+  enabled: true
+  image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
 
 # 4. Apache Spark Operator (Processing Engine)
 spark-operator:
@@ -401,3 +449,60 @@ superset:
               return user
 
       CUSTOM_SECURITY_MANAGER = CustomSsoSecurityManager
+
+# 8. Apache Kafka (Streaming Platform) — Strimzi operator + KRaft cluster
+# Deployed via the strimzi-kafka-operator dependency (Chart.yaml) plus the
+# KafkaNodePool / Kafka / KafkaTopic custom resources in
+# templates/kafka-cluster.yaml. Single dual-role node for local clusters.
+kafka:
+  enabled: true
+  cluster:
+    # Kafka custom resource name. Also the DNS prefix of the broker services:
+    # <name>-kafka-bootstrap:9092 is the in-cluster bootstrap address that
+    # Flink SQL jobs use (see pipelines/flink/examples/*.sql).
+    name: "aetherlake"
+    # Kafka version supported by the pinned Strimzi operator (4.2.0 - 4.3.0).
+    version: "4.3.0"
+    metadataVersion: "4.3-IV0"
+    replicas: 1
+    storageSize: "10Gi"
+    # Empty uses the cluster default StorageClass (hostpath on Docker Desktop).
+    storageClassName: ""
+    # Single-broker dev defaults: every topic must fit on one node. Raise
+    # these together with replicas for multi-node clusters.
+    replicationFactor: 1
+    minInSyncReplicas: 1
+  # Topics reconciled by the Strimzi topic operator. `events` backs the
+  # pipelines/flink example jobs.
+  topics:
+    - name: "events"
+      partitions: 3
+      replicas: 1
+
+# 9. Apache Flink (Stream Processing) — Flink Kubernetes Operator
+# The operator dependency (Chart.yaml) watches FlinkDeployment custom
+# resources. The Control Panel creates one FlinkDeployment per submitted Flink
+# SQL job (application mode, dedicated mini-cluster per job) through the
+# Kubernetes API; nothing Flink-job-specific is templated by this chart.
+flink:
+  enabled: true
+  # Image used for SQL jobs. Built by install.sh from
+  # pipelines/flink/sql-runner (vendored Apache flink-sql-runner-example on a
+  # flink:2.1 base, Kafka SQL connector shaded in). The Control Panel reads the
+  # same value via the FLINK_SQL_RUNNER_IMAGE env var; keep both in sync.
+  sqlRunner:
+    image: "aetherlake/flink-sql-runner:flink-2.1"
+  # Per-job mini-cluster sizing (FlinkDeployment defaults applied by the
+  # Control Panel when submitting SQL jobs).
+  jobs:
+    flinkVersion: "v2_1"
+    jobManagerMemory: "1024m"
+    taskManagerMemory: "2048m"
+
+# Flink operator subchart values. The upstream chart ships snapshot image tags
+# by default; pin the released Docker Hub image instead. The webhook needs
+# cert-manager (installed by install.sh before this chart).
+flink-kubernetes-operator:
+  image:
+    repository: apache/flink-kubernetes-operator
+    tag: "1.15.0"

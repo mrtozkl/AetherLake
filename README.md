@@ -63,6 +63,11 @@ AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that br
 │  │  │  Airflow     │  │  Spark      │  │  Superset    │            │
 │  │  │ (Orchestr.)  │  │ (Process.)  │  │  (BI / dbt)  │            │
 │  │  └──────────────┘  └─────────────┘  └──────────────┘            │
+│  │  ┌─────────────┐  ┌─────────────┐                               │
+│  │  │   Kafka      │◄─┤   Flink     │                               │
+│  │  │ (Streaming,  │  │ (SQL Jobs,  │                               │
+│  │  │  Strimzi)    │  │  Operator)  │                               │
+│  │  └─────────────┘  └─────────────┘                               │
 │  │   Airflow/Superset/Polaris → shared aetherlake-postgres          │
 │  │   Keycloak → its own keycloak-postgres (isolated)               │
 │  │                                                                  │
@@ -99,6 +104,8 @@ AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that br
 | **[Apache Airflow](https://airflow.apache.org/)** | Workflow orchestration | Apache 2.10.5 (chart 1.16.0) | ✅ Stable |
 | **[Apache Superset](https://superset.apache.org/)** | BI & dashboards | 3.1.2 (chart 0.12.8) | ✅ Stable |
 | **[Apache Spark](https://spark.apache.org/)** | Distributed data processing | Operator 1.1.27 | ✅ Stable |
+| **[Apache Kafka](https://kafka.apache.org/)** | Distributed streaming platform | 4.3.0 (Strimzi 1.1.0, KRaft) | ✅ Stable |
+| **[Apache Flink](https://flink.apache.org/)** | Stream processing (Flink SQL jobs) | 2.1 (Operator 1.15.0) | ✅ Stable |
 | **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | ✅ Stable |
 | **[PostgreSQL](https://www.postgresql.org/)** | Metadata datastore (shared + Keycloak) | 16-alpine | ✅ Stable |
 | **[dbt](https://www.getdbt.com/)** | SQL-based data transformation | Project included | ✅ Stable |
@@ -113,6 +120,7 @@ AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that br
 - Kubernetes cluster (v1.26+) — local: [Docker Desktop](https://www.docker.com/products/docker-desktop/), [minikube](https://minikube.sigs.k8s.io/), or [kind](https://kind.sigs.k8s.io/)
 - [Helm](https://helm.sh/) v3.12+
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- [Docker](https://www.docker.com/) — `install.sh` builds the Flink SQL runner image locally (skipped with a warning when Docker is missing)
 - NGINX Ingress Controller
 - *(optional)* [metrics-server](https://github.com/kubernetes-sigs/metrics-server) — required for the Control Panel's per-pod CPU/RAM metrics. On Docker Desktop install it with `--kubelet-insecure-tls`.
 
@@ -145,6 +153,7 @@ Add the following to your `/etc/hosts` (or use a local DNS resolver):
 127.0.0.1  airflow.aetherlake.local
 127.0.0.1  milvus.aetherlake.local
 127.0.0.1  superset.aetherlake.local
+127.0.0.1  oauth2.aetherlake.local
 ```
 
 ### 7. Access the platform
@@ -153,12 +162,12 @@ Add the following to your `/etc/hosts` (or use a local DNS resolver):
 |---------|-----|
 | Control Panel | `http://localhost:3000` |
 | MinIO Console | `http://minio.aetherlake.local` |
-| Trino | `http://trino.aetherlake.local` (basic auth, user `trino`) |
+| Trino | `http://trino.aetherlake.local` (Keycloak SSO) |
 | Polaris | `http://polaris.aetherlake.local` |
 | Keycloak | `http://keycloak.aetherlake.local` |
 | Airflow | `http://airflow.aetherlake.local` |
 | Superset | `http://superset.aetherlake.local` |
-| Milvus (Attu) | `http://milvus.aetherlake.local` |
+| Milvus (Attu) | `http://milvus.aetherlake.local` (Keycloak SSO) |
 
 **Control Panel (local dev login):** `admin` / `admin` — this username/password
 provider is only enabled when the Control Panel runs outside production
@@ -210,6 +219,7 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 - **Iceberg Tables** — Browse Polaris namespaces, table schemas, partitions, and snapshot history
 - **Trino Management** — Create, delete, and configure SQL catalogs (Iceberg, Hive, PostgreSQL, MySQL)
 - **Polaris Management** — Manage Iceberg REST catalogs and namespaces
+- **Flink SQL Jobs** — Write Flink SQL in a Monaco editor, submit jobs to the Flink Kubernetes Operator, and list/cancel running jobs
 - **SQL IDE** — Browser-based SQL editor with Monaco Editor, schema explorer, and query results
 - **Service Actions** — Restart services directly from the dashboard
 - **SSO Integration** — Keycloak OIDC and credentials-based authentication
@@ -301,8 +311,9 @@ AetherLake/
 │   │   ├── page.tsx            # Platform overview (home)
 │   │   ├── trino/              # Trino catalog management
 │   │   ├── polaris/            # Polaris catalog management
+│   │   ├── flink/              # Flink SQL job submission & listing
 │   │   ├── query/              # SQL IDE with Monaco Editor
-│   │   ├── api/                # Backend API routes (K8s, Trino, Polaris)
+│   │   ├── api/                # Backend API routes (K8s, Trino, Polaris, Flink)
 │   │   ├── components/         # Shared UI components (Sidebar)
 │   │   ├── i18n.ts             # Translation strings (EN/TR)
 │   │   └── locale-provider.tsx # React context for i18n
@@ -310,10 +321,10 @@ AetherLake/
 │
 ├── helm-charts/
 │   ├── core-data-stack/        # Main data infrastructure chart
-│   │   ├── Chart.yaml          # Dependencies: Trino, Spark, Polaris, Airflow, Milvus
+│   │   ├── Chart.yaml          # Dependencies: Trino, Spark, Polaris, Airflow, Milvus, Kafka (Strimzi), Flink
 │   │   ├── values.yaml         # Default configuration
 │   │   ├── charts/polaris/     # Custom Apache Polaris subchart
-│   │   └── templates/          # MinIO Tenant CRD, init jobs
+│   │   └── templates/          # MinIO Tenant CRD, Kafka cluster CRs, init jobs
 │   │
 │   └── security-stack/         # Identity & access management chart
 │       ├── Chart.yaml          # Dependency: Keycloak
@@ -322,6 +333,7 @@ AetherLake/
 ├── pipelines/                  # Data pipeline examples
 │   ├── airflow/dags/           # Airflow DAG definitions
 │   ├── spark/ingest.py         # PySpark ingestion job
+│   ├── flink/                  # Flink SQL runner image + example SQL jobs
 │   └── dbt/                    # dbt project (models, profiles)
 │
 ├── aetherlake-ingress.yaml     # NGINX Ingress rules for all services
@@ -353,6 +365,12 @@ spark-operator:
 
 airflow:
   enabled: false    # Disable if not needed
+
+kafka:
+  enabled: true     # Strimzi operator + KRaft cluster
+
+flink:
+  enabled: true     # Flink Kubernetes Operator (SQL jobs from the Control Panel)
 
 milvus:
   enabled: true
@@ -412,6 +430,14 @@ Submit PySpark jobs via the Spark Operator:
 ```bash
 kubectl apply -f pipelines/spark/ingest.py
 ```
+
+### Flink SQL
+
+Submit Flink SQL jobs from the Control Panel (**Apache Flink → Submit Job**) —
+each job runs as a dedicated application-mode cluster managed by the Flink
+Kubernetes Operator. Example scripts (datagen → Kafka, Kafka → print) live in
+`pipelines/flink/examples/`, and the SQL runner image is built by `install.sh`
+from `pipelines/flink/sql-runner`.
 
 ### dbt
 
@@ -482,7 +508,7 @@ This project is licensed under the **Business Source License 1.1 (BUSL-1.1)** �
 
 In short: the source is freely available, and you can use, modify, and self-host AetherLake at no cost for internal, evaluation, or non-commercial purposes. If you want to monetize it — offer it as a hosted/managed service, embed it in a paid product, or sell services built around it — you need a commercial license, which may include revenue-sharing terms. Reach out to murat.ozkl@gmail.com to discuss. Each release automatically converts to the permissive **Apache License 2.0** four years after publication.
 
-AetherLake also deploys third-party open-source components (Trino, Apache Polaris, Airflow, Superset, Spark, Milvus, Keycloak, PostgreSQL, Redis, MinIO), each under its own license — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for details, in particular a note on MinIO's AGPLv3 licensing.
+AetherLake also deploys third-party open-source components (Trino, Apache Polaris, Airflow, Superset, Spark, Kafka, Flink, Milvus, Keycloak, PostgreSQL, Redis, MinIO), each under its own license — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for details, in particular a note on MinIO's AGPLv3 licensing.
 
 ---
 

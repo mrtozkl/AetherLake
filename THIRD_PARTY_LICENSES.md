@@ -18,6 +18,8 @@ require) independently of your AetherLake license.
 | Apache Airflow | Apache License 2.0 | |
 | Apache Superset | Apache License 2.0 | |
 | Apache Spark / Spark Operator | Apache License 2.0 | |
+| Apache Kafka / Strimzi | Apache License 2.0 | Kafka is deployed via the Strimzi cluster operator (chart + operator image) |
+| Apache Flink / Flink Kubernetes Operator | Apache License 2.0 | The Flink SQL runner image is built from the upstream `flink-sql-runner-example` (Apache 2.0) on the official `flink` image |
 | Milvus | Apache License 2.0 | |
 | Keycloak | Apache License 2.0 | |
 | PostgreSQL | PostgreSQL License | Permissive, BSD-style |

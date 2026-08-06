@@ -12,6 +12,10 @@ metadata:
     # backing Services. Forcing a redirect here would break those flows.
     # HTTPS is served in parallel for clients that trust the AetherLake CA.
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # oauth2.aetherlake.local is served from this ingress: the session cookie
+    # oauth2-proxy sets on /oauth2/callback carries the Keycloak tokens and
+    # exceeds nginx's default 4k upstream header buffer (502 without this).
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
 spec:
   tls:
     - hosts:
@@ -19,8 +23,8 @@ spec:
         - polaris.aetherlake.local
         - keycloak.aetherlake.local
         - airflow.aetherlake.local
-        - milvus.aetherlake.local
         - superset.aetherlake.local
+        - oauth2.aetherlake.local
       secretName: aetherlake-tls
   rules:
     - host: minio.aetherlake.local
@@ -63,16 +67,6 @@ spec:
                 name: core-data-stack-webserver
                 port:
                   number: 8080
-    - host: milvus.aetherlake.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: core-data-stack-milvus-attu
-                port:
-                  number: 3000
     - host: superset.aetherlake.local
       http:
         paths:
@@ -83,13 +77,26 @@ spec:
                 name: core-data-stack-superset
                 port:
                   number: 8088
+    # oauth2-proxy itself (Keycloak SSO callback endpoint for the gated hosts).
+    - host: oauth2.aetherlake.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: oauth2-proxy
+                port:
+                  number: 4180
 ---
-# Trino gets its own Ingress so basic auth can be scoped to it alone. Trino
-# itself runs without authentication and trusts the X-Trino-User header, so an
-# unauthenticated ingress route would hand full SQL access (as any identity) to
-# anyone who can reach it. The htpasswd secret (trino-ingress-auth) is created
-# by install.sh with a random password; retrieve it from the
-# aetherlake-credentials secret (key: trino-ingress-password).
+# Web UIs without native OIDC support are gated through oauth2-proxy via nginx
+# external auth: anonymous requests are redirected to oauth2.aetherlake.local,
+# which runs the Keycloak OIDC flow (see core-data-stack/templates/
+# oauth2-proxy.yaml and the oauth2-proxy client in the realm definition).
+# Trino itself runs without authentication and trusts the X-Trino-User header,
+# so its route must never be reachable anonymously. The Control Panel keeps
+# working because it calls Trino through the in-cluster service, not the
+# ingress.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -99,9 +106,9 @@ metadata:
     kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: aetherlake-ca
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/auth-type: basic
-    nginx.ingress.kubernetes.io/auth-secret: trino-ingress-auth
-    nginx.ingress.kubernetes.io/auth-realm: "Trino (user: trino — password in aetherlake-credentials/trino-ingress-password)"
+    nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.aetherlake.svc.cluster.local:4180/oauth2/auth"
+    nginx.ingress.kubernetes.io/auth-signin: "http://oauth2.aetherlake.local/oauth2/start?rd=$scheme://$host$escaped_request_uri"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-Email, X-Auth-Request-User"
 spec:
   tls:
     - hosts:
@@ -118,3 +125,33 @@ spec:
                 name: core-data-stack-trino
                 port:
                   number: 8080
+---
+# Milvus Attu has no authentication of its own; same oauth2-proxy gate.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aetherlake-milvus-ingress
+  namespace: aetherlake
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: aetherlake-ca
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.aetherlake.svc.cluster.local:4180/oauth2/auth"
+    nginx.ingress.kubernetes.io/auth-signin: "http://oauth2.aetherlake.local/oauth2/start?rd=$scheme://$host$escaped_request_uri"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-Email, X-Auth-Request-User"
+spec:
+  tls:
+    - hosts:
+        - milvus.aetherlake.local
+      secretName: aetherlake-milvus-tls
+  rules:
+    - host: milvus.aetherlake.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: core-data-stack-milvus-attu
+                port:
+                  number: 3000

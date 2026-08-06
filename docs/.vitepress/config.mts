@@ -38,6 +38,8 @@ export default withMermaid(defineConfig({
           { text: 'Apache Superset — BI', link: '/guide/components/superset' },
           { text: 'Milvus — Vector DB', link: '/guide/components/milvus' },
           { text: 'Apache Spark — Processing', link: '/guide/components/spark' },
+          { text: 'Apache Kafka — Streaming', link: '/guide/components/kafka' },
+          { text: 'Apache Flink — Stream Processing', link: '/guide/components/flink' },
           { text: 'PostgreSQL — Datastores', link: '/guide/components/postgres' },
         ]
       },

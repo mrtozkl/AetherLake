@@ -35,4 +35,21 @@ dependencies:
     version: 0.12.8
     repository: https://apache.github.io/superset
     condition: superset.enabled
+  # Strimzi cluster operator for Apache Kafka (KRaft mode). The operator manages
+  # the Kafka / KafkaNodePool / KafkaTopic custom resources shipped in
+  # templates/kafka-cluster.yaml. Pinned to 1.1.0, which supports Kafka
+  # 4.2.0 - 4.3.0.
+  - name: strimzi-kafka-operator
+    version: 1.1.0
+    repository: https://strimzi.io/charts/
+    condition: kafka.enabled
+  # Apache Flink Kubernetes Operator. Manages the FlinkDeployment custom
+  # resources that the Control Panel creates when users submit Flink SQL jobs
+  # (application mode, one dedicated mini-cluster per job). The chart installs
+  # its CRDs and needs cert-manager for its admission webhook certificates, so
+  # install.sh provisions cert-manager before the core data stack.
+  - name: flink-kubernetes-operator
+    version: 1.15.0
+    repository: https://downloads.apache.org/flink/flink-kubernetes-operator-1.15.0/
+    condition: flink.enabled
 

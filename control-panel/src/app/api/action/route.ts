@@ -17,6 +17,11 @@ const SERVICE_DEPLOYMENT_MAP: Record<string, string> = {
     'Apache Superset': 'core-data-stack-superset',
     'Milvus Vector Search': 'core-data-stack-milvus-attu', // Restarting Attu UI or the proxy
     'Apache Polaris': 'core-data-stack-polaris',
+    // Kafka brokers are Strimzi-managed pods (no plain Deployment to patch),
+    // so restart targets the cluster operator; Strimzi reconciles afterwards.
+    'Apache Kafka': 'strimzi-cluster-operator',
+    // Flink SQL jobs are per-job FlinkDeployments; restart targets the operator.
+    'Apache Flink': 'flink-kubernetes-operator',
     'Unified SQL IDE': 'control-panel',
     'Keycloak': 'security-stack-keycloak',
 };
