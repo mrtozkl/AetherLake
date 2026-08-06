@@ -68,6 +68,11 @@ trino:
   # call /v1/statement through trino.aetherlake.local. Allow processing them.
   additionalConfigProperties:
     - http-server.process-forwarded=true
+    # Trino's Web UI defaults to a username login form (login.html). Humans
+    # are already authenticated by Keycloak at the ingress (oauth2-proxy), so
+    # run the UI with the fixed service user instead of a second login.
+    - web-ui.authentication.type=fixed
+    - web-ui.user=aetherlake-ui
   env:
     # Inject S3 credentials securely into the Trino pods
     - name: MINIO_ACCESS_KEY
