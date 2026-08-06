@@ -52,6 +52,21 @@ spec:
         port: 9093
         type: internal
         tls: true
+      {{- if .Values.kafka.external.enabled }}
+      # Authenticated access for clients outside the cluster: TLS +
+      # SCRAM-SHA-512, credentials in the KafkaUser secret created by
+      # kafka-external-user.yaml. Nodeport bootstrap is reachable as
+      # localhost:<nodePort> on Docker Desktop. Strimzi only supports
+      # cluster-wide ACLs (spec.kafka.authorization), which would also lock
+      # down the internal listeners, so authorization stays off and the
+      # SCRAM identity is the gate.
+      - name: external
+        port: 9094
+        type: nodeport
+        tls: true
+        authentication:
+          type: scram-sha-512
+      {{- end }}
     config:
       # Single-broker dev cluster: every topic must be fully replicated on one
       # node. Raise these together with kafka.cluster.replicas for production.

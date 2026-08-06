@@ -1,0 +1,20 @@
+{{- if and .Values.kafka.enabled .Values.kafka.external.enabled }}
+# SCRAM identity for clients outside the cluster. The external listener
+# (kafka-cluster.yaml) enforces SCRAM-SHA-512, so only users like this one can
+# connect from outside. Credentials live in the secret Strimzi creates with
+# the same name (keys: username, password, sasl.jaas.config); the cluster CA
+# cert for the TLS truststore comes from <cluster>-cluster-ca-cert.
+# Note: Strimzi ACLs are cluster-wide, so they are not used here — the SCRAM
+# gate is the boundary for external access.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: {{ .Values.kafka.external.username }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ .Values.kafka.cluster.name }}
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  authentication:
+    type: scram-sha-512
+{{- end }}

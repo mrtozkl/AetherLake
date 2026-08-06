@@ -477,6 +477,12 @@ kafka:
     # these together with replicas for multi-node clusters.
     replicationFactor: 1
     minInSyncReplicas: 1
+  # Authenticated access for clients outside the cluster: a TLS + SCRAM-SHA-512
+  # nodeport listener with per-listener ACLs, plus a KafkaUser holding the
+  # credentials (secret <username>, keys sasl.jaas.config / password).
+  external:
+    enabled: true
+    username: "external-producer"
   # Topics reconciled by the Strimzi topic operator. `events` backs the
   # pipelines/flink example jobs.
   topics:
