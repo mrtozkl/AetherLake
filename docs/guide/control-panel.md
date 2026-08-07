@@ -6,7 +6,9 @@ The Control Panel is a **Next.js 16** web application that serves as the unified
 
 ## Features
 
-- **Platform Overview** — Real-time pod status monitoring with auto-refresh
+- **Platform Overview** — Real-time pod status monitoring with auto-refresh; the Kafka card links straight to the Kafka view
+- **Kafka** — Cluster status/version, broker health, and topic details (partitions, replicas, config, reconciliation conditions)
+- **Flink SQL** — Write Flink SQL in a Monaco editor with a Kafka topic explorer, submit jobs, track and cancel them
 - **Observability** — Pod log viewer (live tail), Kubernetes events, and per-pod CPU/RAM metrics
 - **Iceberg Tables** — Browse Polaris namespaces, table schemas, partitions, and snapshot history
 - **Trino Management** — Create, delete, and configure SQL catalogs (Iceberg, Hive, PostgreSQL, MySQL)
@@ -51,6 +53,39 @@ kubectl patch deployment metrics-server -n kube-system --type=json \
 The logs, events, and details still work without metrics-server — only the usage
 numbers are hidden, and the page shows a notice.
 
+## Kafka
+
+The **Kafka** page (`/kafka`) reads the Strimzi custom resources through
+`/api/kafka` and shows:
+
+- **Cluster status** — the `Kafka` CR state, Kafka version, and reconciliation
+  conditions reported by the Strimzi operator.
+- **Broker health** — the dual-role node pool (controller + broker) with pod
+  status.
+- **Topics** — every `KafkaTopic` with partitions, replicas, config and its
+  reconciliation conditions.
+
+See [Kafka — Streaming](./components/kafka) for the cluster itself and
+external (SCRAM-authenticated) access.
+
+## Flink SQL
+
+The **Flink** page (`/flink`) is a workspace for Flink SQL jobs:
+
+- **Topic explorer** — lists Kafka topics; clicking one inserts a Kafka
+  source-table template into the editor.
+- **Monaco editor** — write the SQL (`SET` statements and
+  `EXECUTE STATEMENT SET` are supported).
+- **Submit** — creates a ConfigMap with the script plus one application-mode
+  `FlinkDeployment` (an isolated mini-cluster per job) using the
+  `aetherlake/flink-sql-runner:flink-2.1` image built by `install.sh`.
+- **Jobs list** — live status for every submitted job; cancelling deletes the
+  `FlinkDeployment` and its SQL ConfigMap.
+
+Ready-made scripts to try live in `pipelines/flink/examples/`
+(datagen → Kafka, Kafka → print). Full reference:
+[Flink — Stream Processing](./components/flink).
+
 ## SQL IDE
 
 ![SQL IDE](/ide.png)
@@ -58,7 +93,12 @@ numbers are hidden, and the page shows a notice.
 The **SQL IDE** is a browser-based SQL editor built on Monaco Editor, with a
 schema explorer for browsing catalogs, schemas, and tables, plus a results
 grid for query output. It talks to Trino directly, so any catalog Trino can
-see (Iceberg, Hive, PostgreSQL, MySQL) is queryable from the same editor.
+see (Iceberg, Kafka, Hive, PostgreSQL, MySQL) is queryable from the same
+editor — including streamed data:
+
+```sql
+SELECT * FROM kafka.aetherlake.events LIMIT 10;
+```
 
 ## Trino Management
 

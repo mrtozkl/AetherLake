@@ -5,13 +5,14 @@ on Kubernetes. It is split into two Helm charts:
 
 - **`security-stack`** — Keycloak (OIDC/SSO) + its PostgreSQL.
 - **`core-data-stack`** — MinIO, Trino, Apache Polaris, Apache Spark, Apache
-  Airflow, Apache Superset, Milvus, and the shared PostgreSQL/Redis.
+  Airflow, Apache Superset, Apache Kafka (Strimzi), Apache Flink (operator),
+  the oauth2-proxy SSO gate, Milvus, and the shared PostgreSQL/Redis.
 
 ## System overview
 
 ```mermaid
 graph TD
-    subgraph ingress["NGINX Ingress (*.aetherlake.local)"]
+    subgraph ingress["NGINX Ingress (*.aetherlake.local, TLS via cert-manager)"]
     end
 
     subgraph sec["security-stack"]
@@ -22,12 +23,16 @@ graph TD
 
     subgraph core["core-data-stack"]
         MinIO[MinIO<br/>S3 Object Storage]
-        Trino[Trino 480<br/>Federated SQL]
+        Trino[Trino 480<br/>Federated SQL<br/>iceberg + kafka catalogs]
         Polaris[Apache Polaris<br/>Iceberg REST Catalog]
         Spark[Spark Operator]
         Airflow[Apache Airflow<br/>Orchestration]
         Superset[Apache Superset<br/>BI / Dashboards]
+        Kafka[Kafka 4.3<br/>Strimzi, KRaft<br/>internal + external SCRAM]
+        FlinkOp[Flink Operator]
+        FlinkJob[Flink SQL jobs<br/>per-job mini-clusters]
         Milvus[Milvus<br/>Vector DB]
+        OA[oauth2-proxy<br/>SSO gate]
         PG[(aetherlake-postgres<br/>shared)]
 
         Trino -->|Iceberg REST| Polaris
@@ -39,8 +44,13 @@ graph TD
         Superset --> PG
         Superset -->|SQLAlchemy| Trino
         Spark --> MinIO
+        Trino -->|kafka catalog| Kafka
+        FlinkOp -->|reconciles| FlinkJob
+        FlinkJob -->|produce / consume| Kafka
     end
 
+    ingress -->|SSO check| OA
+    OA -->|OIDC| KC
     ingress --> KC
     ingress --> MinIO
     ingress --> Trino
@@ -54,10 +64,12 @@ graph TD
 
 | Layer | Component(s) | Responsibility |
 |-------|--------------|----------------|
-| **Identity** | Keycloak | Single sign-on, OIDC clients, realm roles |
+| **Identity** | Keycloak + oauth2-proxy | Single sign-on, OIDC clients, realm roles; SSO gate for UIs without native OIDC |
 | **Storage** | MinIO | S3-compatible object storage (Iceberg data, vectors, raw files) |
 | **Catalog** | Apache Polaris | Iceberg REST catalog + S3 credential vending |
-| **Query** | Trino | Federated SQL over the Iceberg catalog and other sources |
+| **Query** | Trino | Federated SQL over the Iceberg catalog, Kafka topics, and other sources |
+| **Streaming** | Apache Kafka (Strimzi) | Durable event streaming, in-cluster + authenticated external access |
+| **Stream processing** | Apache Flink | SQL jobs that read/write Kafka topics (per-job mini-clusters) |
 | **Processing** | Apache Spark | Distributed batch processing |
 | **Orchestration** | Apache Airflow | DAG-based pipeline scheduling |
 | **Analytics / BI** | Apache Superset | Dashboards and SQL exploration over Trino |
@@ -87,10 +99,61 @@ sequenceDiagram
 ::: warning In-cluster DNS
 `keycloak.aetherlake.local` is an ingress host and does **not** resolve via
 cluster DNS by default, so server-side OIDC discovery (MinIO, Superset, Airflow,
-Polaris) would fail. `install.sh` adds a CoreDNS rewrite mapping that hostname to
-the Keycloak Service, keeping in-cluster discovery and browser redirects
-consistent. See [Keycloak / SSO](./components/keycloak).
+Polaris, oauth2-proxy) would fail. `install.sh` adds a CoreDNS rewrite mapping
+that hostname to the Keycloak Service, keeping in-cluster discovery and browser
+redirects consistent. See [Keycloak / SSO](./components/keycloak).
 :::
+
+### UIs without native OIDC: the oauth2-proxy gate
+
+Some UIs have no Keycloak integration of their own — the **Trino web UI** and
+**Milvus Attu**. They are protected by an
+[oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) deployment sitting
+behind nginx external-auth annotations:
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant N as NGINX Ingress
+    participant OA as oauth2-proxy
+    participant KC as Keycloak
+    participant S as Trino UI / Milvus Attu
+    U->>N: GET trino.aetherlake.local (no session)
+    N->>OA: /oauth2/auth
+    OA-->>N: 401 (no session cookie)
+    N->>U: Redirect to oauth2.aetherlake.local/oauth2/start
+    U->>OA: OIDC flow
+    OA->>KC: authorize + token exchange
+    KC-->>OA: tokens
+    OA->>U: Session cookie (.aetherlake.local) + redirect back
+    U->>N: GET with session cookie
+    N->>OA: /oauth2/auth → 200
+    N->>S: Request forwarded (authenticated)
+```
+
+One login covers every gated host: the session cookie is scoped to
+`.aetherlake.local`. Trino runs the web UI with a fixed service user
+(`web-ui.authentication.type=fixed`), since humans already passed the Keycloak
+gate. The in-cluster Trino service (used by the Control Panel and MCP server)
+is unaffected by the gate. See [Keycloak — SSO gate](./components/keycloak#sso-gate-oauth2-proxy).
+
+## Streaming data path (Flink → Kafka → Trino)
+
+```mermaid
+sequenceDiagram
+    participant CP as Control Panel (/flink)
+    participant K as Kafka (aetherlake-kafka-bootstrap)
+    participant F as Flink SQL job
+    participant T as Trino (kafka catalog)
+    CP->>F: submit SQL (ConfigMap + FlinkDeployment)
+    F->>K: produce / consume topics (e.g. events)
+    T->>K: SELECT ... FROM kafka.aetherlake.events
+    Note over K,T: column schemas from trino.kafka.tableDescriptions
+```
+
+External producers/consumers connect through the `external` listener
+(nodeport, TLS + SCRAM-SHA-512, `KafkaUser` credentials) — see
+[Kafka — Producing from outside the cluster](./components/kafka#producing-from-outside-the-cluster).
 
 ## Lakehouse write path (Trino → Polaris → MinIO)
 
@@ -113,5 +176,7 @@ table-scoped S3 credentials instead of long-lived root keys. See
 ## Next
 
 - [Components overview](./components) — one-line summary + status of each service.
+- [Kafka — Streaming](./components/kafka) and
+  [Flink — Stream Processing](./components/flink) — the streaming layer in detail.
 - Per-component reference pages with every setting live under **Component
   Reference** in the sidebar.

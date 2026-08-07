@@ -26,9 +26,10 @@ function requireAirflowAuth(): string {
   return AIRFLOW_AUTH;
 }
 
-// "user:pass" for the basic-auth gate on the Trino ingress (user: trino,
-// password in the aetherlake-credentials secret, key trino-ingress-password).
-// Leave unset when TRINO_URL points at the in-cluster service directly.
+// Legacy "user:pass" Basic auth header. The Trino ingress gate moved from
+// nginx basic auth to Keycloak SSO (oauth2-proxy), which non-interactive
+// clients cannot pass — point TRINO_URL at the in-cluster service or a
+// port-forward instead and leave this unset.
 const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
   ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
   : {};

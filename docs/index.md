@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "AetherLake"
   text: "Open-Source Data Lakehouse"
-  tagline: "Deploy a production-grade, fully integrated data stack on Kubernetes with a single helm install."
+  tagline: "Storage, catalog, query, streaming, BI and identity — deploy the whole platform on Kubernetes with a single helm install."
   actions:
     - theme: brand
       text: Get Started
@@ -15,11 +15,17 @@ hero:
 
 features:
   - title: 🏗️ Modular Design
-    details: Enable or disable any component (Trino, Spark, Airflow, MinIO) via a single Helm value toggle.
+    details: Enable or disable any component (Trino, Spark, Airflow, Kafka, Flink, MinIO…) via a single Helm value toggle.
   - title: 🔐 Secure by Default
-    details: Centralized SSO with Keycloak and RBAC across all services out of the box.
+    details: One Keycloak login for every UI — native OIDC where it exists, an oauth2-proxy SSO gate where it doesn't — plus random per-install secrets.
+  - title: 🌊 Streaming Included
+    details: Apache Kafka (Strimzi, KRaft) with Flink SQL jobs, and topics queryable as SQL tables through the Trino kafka catalog.
+  - title: 🧊 Open Lakehouse
+    details: Iceberg tables on S3-compatible MinIO, Apache Polaris REST catalog with credential vending, federated SQL via Trino.
   - title: 🎛️ Unified Control
-    details: Manage the entire platform, run SQL queries, and monitor pods from the Next.js Control Panel.
+    details: Manage the platform, write Flink SQL, browse Kafka topics, run Trino queries and watch pod logs from the Next.js Control Panel (EN/TR).
+  - title: 🤖 Agent Ready
+    details: A built-in MCP server lets AI assistants check status, query Trino and manage catalogs and pipelines.
 ---
 
 <div style="margin-top: 3rem; display: flex; flex-direction: column; gap: 2rem; align-items: center;">

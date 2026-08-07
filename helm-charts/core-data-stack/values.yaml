@@ -478,8 +478,9 @@ kafka:
     replicationFactor: 1
     minInSyncReplicas: 1
   # Authenticated access for clients outside the cluster: a TLS + SCRAM-SHA-512
-  # nodeport listener with per-listener ACLs, plus a KafkaUser holding the
-  # credentials (secret <username>, keys sasl.jaas.config / password).
+  # nodeport listener (authentication only — Strimzi ACLs are cluster-wide and
+  # intentionally not used here), plus a KafkaUser holding the credentials
+  # (secret <username>, keys sasl.jaas.config / password).
   external:
     enabled: true
     username: "external-producer"

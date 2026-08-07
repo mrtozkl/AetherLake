@@ -9,7 +9,8 @@ lakehouse. It is deployed by the Strimzi cluster operator in KRaft mode
 - **Kafka version:** 4.3.0 (KRaft, `KafkaNodePool` with controller + broker roles)
 - **Cluster CR:** `templates/kafka-cluster.yaml` (`Kafka` + `KafkaNodePool` + `KafkaTopic`)
 - **Bootstrap address (in-cluster):** `aetherlake-kafka-bootstrap:9092`
-- **Ingress:** none — brokers are only reachable inside the cluster
+- **Ingress:** none — external clients connect through the TLS + SCRAM-SHA-512
+  nodeport listener, not an HTTP ingress route
 
 ## Architecture
 

@@ -7,8 +7,11 @@ It is the query engine behind Superset and the Control Panel.
 - **Ingress:** `trino.aetherlake.local` → `core-data-stack-trino:8080` — gated by
   **Keycloak SSO** through oauth2-proxy (nginx external auth). Trino itself runs
   unauthenticated and trusts the `X-Trino-User` header, so the ingress route
-  must never be open. The Control Panel and the MCP server call Trino through
-  the in-cluster service and are unaffected by the gate.
+  must never be open. Behind the gate the web UI runs with the fixed service
+  user (`web-ui.authentication.type=fixed`, `web-ui.user=aetherlake-ui`) —
+  there is no second Trino login after SSO. The Control Panel and the MCP
+  server call Trino through the in-cluster service and are unaffected by the
+  gate. See [Keycloak — SSO gate](./keycloak#sso-gate-oauth2-proxy).
 - **In-cluster:** `http://core-data-stack-trino:8080` (no gate — cluster network only)
 
 ## Architecture

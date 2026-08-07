@@ -13,7 +13,15 @@ AetherLake includes a built-in **Model Context Protocol (MCP)** server, allowing
 
 ## Configuring Claude Desktop
 
-Add the following to your `claude_desktop_config.json`:
+Add the following to your `claude_desktop_config.json`. Point `TRINO_URL` at a
+route the server can reach **without** a browser SSO session — either the
+in-cluster service (when the MCP server runs in the cluster) or a local
+port-forward:
+
+```bash
+# Keep this running while the MCP server is used:
+kubectl port-forward -n aetherlake svc/core-data-stack-trino 8080:8080
+```
 
 ```json
 {
@@ -23,8 +31,7 @@ Add the following to your `claude_desktop_config.json`:
       "args": ["/path/to/AetherLake/mcp-server/dist/index.js"],
       "env": {
         "AETHERLAKE_NAMESPACE": "aetherlake",
-        "TRINO_URL": "http://trino.aetherlake.local",
-        "TRINO_BASIC_AUTH": "trino:your-trino-ingress-password",
+        "TRINO_URL": "http://localhost:8080",
         "POLARIS_URL": "http://polaris.aetherlake.local",
         "AIRFLOW_URL": "http://airflow.aetherlake.local",
         "AIRFLOW_AUTH": "admin:your-airflow-password"
@@ -41,8 +48,8 @@ Make sure to run `npm install` and `npm run build` in the `mcp-server` directory
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AETHERLAKE_NAMESPACE` | `aetherlake` | Kubernetes namespace to operate against |
-| `TRINO_URL` | `http://trino.aetherlake.local` | Trino coordinator base URL |
-| `TRINO_BASIC_AUTH` | *(unset)* | `trino:<password>` for the basic-auth gate on the Trino ingress (`trino-ingress-password` key in `aetherlake-credentials`). Not needed when `TRINO_URL` points at the in-cluster service |
+| `TRINO_URL` | `http://trino.aetherlake.local` | Trino coordinator base URL. The ingress host is gated by Keycloak SSO (oauth2-proxy), which non-interactive clients cannot pass — use the in-cluster service (`http://core-data-stack-trino:8080`) or a port-forward instead |
+| `TRINO_BASIC_AUTH` | *(unset)* | Legacy `user:password` sent as a Basic auth header. The old basic-auth gate on the Trino ingress was replaced by the SSO gate, so this is only useful against custom setups — not needed for the in-cluster service |
 | `POLARIS_URL` | `http://polaris.aetherlake.local` | Apache Polaris REST catalog base URL |
 | `AIRFLOW_URL` | `http://airflow.aetherlake.local` | Airflow webserver base URL |
 | `AIRFLOW_AUTH` | *(required for Airflow tools)* | Airflow basic-auth `user:password`, used for DAG operations |

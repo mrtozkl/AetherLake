@@ -28,6 +28,7 @@ by a `keycloak-config-cli` Job after Keycloak starts.
 | Client ID | Used by | Secret key (in `aetherlake-credentials`) |
 |-----------|---------|------------------------------------------|
 | `aetherlake-client` | Control Panel | `control-panel-oidc-secret` |
+| `oauth2-proxy` | SSO gate for Trino UI & Milvus Attu | `oauth2-proxy-oidc-secret` |
 | `trino` | Trino | `trino-oidc-secret` |
 | `airflow` | Airflow web UI | `airflow-oidc-secret` |
 | `polaris` | Polaris | `polaris-oidc-secret` |
@@ -42,6 +43,34 @@ by a `keycloak-config-cli` Job after Keycloak starts.
 | `data-engineer` | `Op` | `Alpha` | — |
 | `data-scientist` | `User` | `Alpha` | — |
 | *(others)* | `Public` | `Gamma` | — |
+
+## SSO gate (oauth2-proxy)
+
+Trino's web UI and Milvus Attu have no native OIDC support, so they sit behind
+an **oauth2-proxy** deployment (`core-data-stack/templates/oauth2-proxy.yaml`,
+toggled by `sso.enabled`, image `quay.io/oauth2-proxy/oauth2-proxy:v7.7.1`).
+The protected ingresses (`trino.aetherlake.local`, `milvus.aetherlake.local`)
+carry nginx external-auth annotations pointing at it:
+
+- Anonymous browser requests are redirected to `oauth2.aetherlake.local`
+  (its own ingress host), which runs the Keycloak OIDC flow and sets a session
+  cookie scoped to `.aetherlake.local` — **one login covers every gated host**.
+- `install.sh` generates the two secrets the proxy needs:
+  `oauth2-proxy-oidc-secret` (client secret) and `oauth2-proxy-cookie-secret`
+  (16-byte cookie signing key).
+- Users created by keycloak-config-cli carry no verified-email flag, so the
+  proxy runs with `insecure-oidc-allow-unverified-email`; rejecting them would
+  lock everyone out.
+- After the gate, Trino serves its web UI with the fixed service user
+  (`web-ui.authentication.type=fixed`, `web-ui.user=aetherlake-ui`) instead of
+  a second login form. In-cluster callers (Control Panel, MCP server) reach
+  `core-data-stack-trino:8080` directly and never hit the gate.
+
+::: warning
+Trino itself runs unauthenticated and trusts the `X-Trino-User` header — the
+ingress route must never be reachable anonymously. Do not remove the external
+auth annotations from `aetherlake-trino-ingress`.
+:::
 
 ## Key settings (`security-stack/values.yaml`)
 
