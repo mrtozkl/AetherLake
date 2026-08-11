@@ -16,6 +16,13 @@ if ! command -v helm &> /dev/null; then
     exit 1
 fi
 
+# python3 renders Trino's password.db (PBKDF2) and parses Keycloak's realm-key
+# JSON — both part of Trino's per-user authentication below.
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Error: python3 is not installed."
+    exit 1
+fi
+
 # 2. Create Namespace
 echo "📦 Creating aetherlake namespace..."
 kubectl create namespace aetherlake --dry-run=client -o yaml | kubectl apply -f -
@@ -26,6 +33,19 @@ echo "🔐 Configuring credentials..."
 # Generate a URL-safe random secret value.
 gen_secret() {
     LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32
+}
+
+# Hash a password for Trino's file password authenticator. Trino accepts
+# bcrypt ($2y$, cost >= 8) or PBKDF2 entries; use PBKDF2WithHmacSHA1 in the
+# exact format Trino parses — iterations:hex(salt):hex(hash) — so the script
+# has no dependency beyond python3.
+hash_password() {
+    python3 - "$1" <<'PYEOF'
+import hashlib, os, sys
+salt = os.urandom(16)
+dk = hashlib.pbkdf2_hmac("sha1", sys.argv[1].encode(), salt, 10000, dklen=32)
+print(f"10000:{salt.hex()}:{dk.hex()}")
+PYEOF
 }
 
 # Generate the credential values ONCE. The security-stack (Keycloak) and the
@@ -74,6 +94,19 @@ REALM_ADMIN_PASSWORD="${REALM_ADMIN_PASSWORD:-$(gen_secret)}"
 # the bootstrap admin password used by the init job.
 SUPERSET_SECRET_KEY="$(gen_secret)"
 SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD:-$(gen_secret)}"
+# Trino authenticates every caller (PASSWORD,JWT — see the trino section of
+# core-data-stack values.yaml). These back the PASSWORD (file) authenticator:
+# - dev admin/user: let the Control Panel's dev-credentials login keep working
+#   without a Keycloak session (dev only; production logins go through the
+#   Keycloak JWT path).
+# - superset / mcp / control-panel-svc: service users for Superset's Trino
+#   datasource, the MCP server (TRINO_BASIC_AUTH=mcp:<password>) and the
+#   Control Panel's server-side admin queries.
+TRINO_DEV_ADMIN_PASSWORD="${TRINO_DEV_ADMIN_PASSWORD:-$(gen_secret)}"
+TRINO_DEV_USER_PASSWORD="${TRINO_DEV_USER_PASSWORD:-$(gen_secret)}"
+TRINO_SUPERSET_PASSWORD="$(gen_secret)"
+TRINO_MCP_PASSWORD="$(gen_secret)"
+TRINO_PANEL_SVC_PASSWORD="$(gen_secret)"
 
 # Create a credentials secret from the shared values above. Pass the name as $1.
 create_credentials_secret() {
@@ -107,7 +140,12 @@ create_credentials_secret() {
         --from-literal=redis-password="$REDIS_PASSWORD" \
         --from-literal=realm-admin-password="$REALM_ADMIN_PASSWORD" \
         --from-literal=superset-secret-key="$SUPERSET_SECRET_KEY" \
-        --from-literal=superset-admin-password="$SUPERSET_ADMIN_PASSWORD"
+        --from-literal=superset-admin-password="$SUPERSET_ADMIN_PASSWORD" \
+        --from-literal=trino-dev-admin-password="$TRINO_DEV_ADMIN_PASSWORD" \
+        --from-literal=trino-dev-user-password="$TRINO_DEV_USER_PASSWORD" \
+        --from-literal=trino-superset-password="$TRINO_SUPERSET_PASSWORD" \
+        --from-literal=trino-mcp-password="$TRINO_MCP_PASSWORD" \
+        --from-literal=trino-panel-svc-password="$TRINO_PANEL_SVC_PASSWORD"
 }
 
 # Add a key to an existing secret only if it is missing — lets upgrades of
@@ -135,6 +173,11 @@ for secret_name in open-lake-credentials aetherlake-credentials; do
     ensure_secret_key "$secret_name" superset-admin-password "$SUPERSET_ADMIN_PASSWORD"
     ensure_secret_key "$secret_name" oauth2-proxy-oidc-secret "$OAUTH2_PROXY_OIDC_SECRET"
     ensure_secret_key "$secret_name" oauth2-proxy-cookie-secret "$OAUTH2_PROXY_COOKIE_SECRET"
+    ensure_secret_key "$secret_name" trino-dev-admin-password "$TRINO_DEV_ADMIN_PASSWORD"
+    ensure_secret_key "$secret_name" trino-dev-user-password "$TRINO_DEV_USER_PASSWORD"
+    ensure_secret_key "$secret_name" trino-superset-password "$TRINO_SUPERSET_PASSWORD"
+    ensure_secret_key "$secret_name" trino-mcp-password "$TRINO_MCP_PASSWORD"
+    ensure_secret_key "$secret_name" trino-panel-svc-password "$TRINO_PANEL_SVC_PASSWORD"
 done
 
 # Airflow secret for the official Apache Airflow chart. One secret holds the
@@ -157,6 +200,8 @@ echo "      SSO login (user: admin, password change forced on first login):"
 echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.realm-admin-password}' | base64 -d"
 echo "      Superset admin:"
 echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.superset-admin-password}' | base64 -d"
+echo "      MCP server Trino access (TRINO_BASIC_AUTH=mcp:<password>):"
+echo "      kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-mcp-password}' | base64 -d"
 
 # 4. Deploy Security Stack
 echo "🛡️ Deploying Security Stack (Keycloak)..."
@@ -192,6 +237,53 @@ if ! printf '%s' "$COREFILE" | grep -q "keycloak.aetherlake.local"; then
 else
     echo "   CoreDNS rewrite already present. Skipping."
 fi
+
+# 4c. Trino verifies Keycloak JWTs with the realm's RSA public key (mounted
+# into the coordinator from the trino-jwt-key ConfigMap — see the trino
+# section of core-data-stack values.yaml). Keycloak serves its JWKS over
+# http:// only and Trino fetches JWKS exclusively over https, so pull the key
+# through the admin API instead. The ingress host may not resolve on this
+# machine yet, hence the port-forward.
+echo "🔑 Fetching aetherlake realm public key for Trino JWT verification..."
+KEYCLOAK_ADMIN_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.keycloak-admin-password}' | base64 -d)"
+kubectl port-forward -n aetherlake svc/security-stack-keycloak 18080:80 >/dev/null 2>&1 &
+KEYCLOAK_PF_PID=$!
+trap 'kill "$KEYCLOAK_PF_PID" 2>/dev/null || true' EXIT
+for _ in $(seq 1 30); do
+    curl -sf http://localhost:18080/realms/aetherlake >/dev/null 2>&1 && break
+    sleep 2
+done
+KC_ADMIN_TOKEN="$(curl -s -X POST http://localhost:18080/realms/master/protocol/openid-connect/token \
+    -d "client_id=admin-cli" -d "username=admin" \
+    -d "password=${KEYCLOAK_ADMIN_PASSWORD_ACTUAL}" -d "grant_type=password" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))')"
+if [ -z "$KC_ADMIN_TOKEN" ]; then
+    echo "❌ Could not obtain a Keycloak admin token — needed to fetch the realm key for Trino JWT auth."
+    exit 1
+fi
+REALM_PUBLIC_KEY="$(curl -s -H "Authorization: Bearer $KC_ADMIN_TOKEN" \
+    http://localhost:18080/admin/realms/aetherlake/keys \
+    | python3 -c '
+import json, sys
+keys = json.load(sys.stdin)["keys"]
+rsa = [k for k in keys if k.get("algorithm") == "RS256" and k.get("status") in (None, "ACTIVE")]
+if not rsa:
+    raise SystemExit("no active RS256 realm key found")
+print(rsa[0]["publicKey"])')"
+kill "$KEYCLOAK_PF_PID" 2>/dev/null || true
+trap - EXIT
+if [ -z "$REALM_PUBLIC_KEY" ]; then
+    echo "❌ Failed to extract the realm RSA public key."
+    exit 1
+fi
+# Keycloak returns the key as single-line base64 DER (SubjectPublicKeyInfo);
+# wrap it into PEM for Trino.
+TRINO_JWT_PEM="$(printf -- '-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----\n' \
+    "$(printf '%s' "$REALM_PUBLIC_KEY" | fold -w 64)")"
+kubectl create configmap trino-jwt-key -n aetherlake \
+    --from-literal=key.pem="$TRINO_JWT_PEM" \
+    --dry-run=client -o yaml | kubectl apply -f -
+echo "   trino-jwt-key ConfigMap updated."
 
 # 5a. Ensure the MinIO Operator is present. Object storage is provisioned through
 # a MinIO `Tenant` CRD (helm-charts/core-data-stack/templates/minio-tenant.yaml);
@@ -270,14 +362,53 @@ fi
 MINIO_ROOT_USER_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-root-user}' | base64 -d)"
 MINIO_ROOT_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-root-password}' | base64 -d)"
 MINIO_OIDC_SECRET_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.minio-oidc-secret}' | base64 -d)"
+# Same reasoning as MinIO above: re-read the Trino passwords from the secret
+# so a re-run renders password.db/Superset URI with the stored values.
+TRINO_DEV_ADMIN_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-dev-admin-password}' | base64 -d)"
+TRINO_DEV_USER_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-dev-user-password}' | base64 -d)"
+TRINO_SUPERSET_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-superset-password}' | base64 -d)"
+TRINO_MCP_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-mcp-password}' | base64 -d)"
+TRINO_PANEL_SVC_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-panel-svc-password}' | base64 -d)"
+
+# Trino auth override: credential material never lives in committed values.
+# password.db — PASSWORD (file) authenticator entries; group.db — maps Trino
+# users onto the access-control groups that mirror the Keycloak realm roles.
+# To give a new Keycloak user a role, add their username to the matching
+# group line below and re-run install.sh.
+echo "🧂 Rendering Trino password.db / group.db..."
+TRINO_AUTH_VALUES="$(mktemp /tmp/aetherlake-trino-auth-values.XXXXXX.yaml)"
+{
+    echo "trino:"
+    echo "  auth:"
+    echo "    passwordAuth: |"
+    echo "      admin:$(hash_password "$TRINO_DEV_ADMIN_PASSWORD_ACTUAL")"
+    echo "      user:$(hash_password "$TRINO_DEV_USER_PASSWORD_ACTUAL")"
+    echo "      superset:$(hash_password "$TRINO_SUPERSET_PASSWORD_ACTUAL")"
+    echo "      mcp:$(hash_password "$TRINO_MCP_PASSWORD_ACTUAL")"
+    echo "      control-panel-svc:$(hash_password "$TRINO_PANEL_SVC_PASSWORD_ACTUAL")"
+    echo "    groups: |"
+    echo "      data-admin:admin,control-panel-svc"
+    echo "      data-scientist:user,superset,mcp,aetherlake-ui"
+    echo "superset:"
+    echo "  extraConfigs:"
+    echo "    import_datasources.yaml: |"
+    echo "      databases:"
+    echo "        - database_name: \"Trino Analytics\""
+    echo "          sqlalchemy_uri: \"trino://superset:${TRINO_SUPERSET_PASSWORD_ACTUAL}@core-data-stack-trino:8080/iceberg\""
+    echo "          expose_in_sqllab: true"
+    echo "          allow_run_async: true"
+} > "$TRINO_AUTH_VALUES"
+
 # --skip-crds: the CRDs above are bootstrapped with kubectl server-side apply
 # (or already exist on upgrades); letting helm apply its crds/ copy on top
 # fails with a field-manager conflict on .spec.versions during fresh installs.
 helm upgrade --install core-data-stack . -n aetherlake \
     --skip-crds \
+    -f "$TRINO_AUTH_VALUES" \
     --set minio.rootUser="$MINIO_ROOT_USER_ACTUAL" \
     --set minio.rootPassword="$MINIO_ROOT_PASSWORD_ACTUAL" \
     --set minio.oidc.clientSecret="$MINIO_OIDC_SECRET_ACTUAL"
+rm -f "$TRINO_AUTH_VALUES"
 cd ../..
 
 # 5d. Build the Flink SQL runner image used by SQL jobs submitted from the

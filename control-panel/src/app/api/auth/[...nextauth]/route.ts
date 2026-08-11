@@ -82,6 +82,53 @@ function roleFromKeycloakToken(accessToken: string): string | undefined {
     return undefined
 }
 
+// Keycloak username (preferred_username claim) — the identity SQL queries run
+// as: Trino validates the forwarded token and maps the principal from the
+// same claim.
+function usernameFromKeycloakToken(accessToken: string): string | undefined {
+    try {
+        const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString("utf-8"))
+        return typeof payload?.preferred_username === "string" ? payload.preferred_username : undefined
+    } catch {
+        return undefined
+    }
+}
+
+// Keycloak access tokens expire (minutes). Refresh them server-side with the
+// stored refresh token so long-lived browser sessions keep being able to run
+// queries without forcing a re-login.
+async function refreshAccessToken(token: any) {
+    try {
+        const issuer = `${process.env.KEYCLOAK_URL || "http://keycloak.aetherlake.local"}/realms/aetherlake`
+        const response = await fetch(`${issuer}/protocol/openid-connect/token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                client_id: process.env.KEYCLOAK_CLIENT_ID || "aetherlake-client",
+                client_secret: requireInProduction(
+                    process.env.KEYCLOAK_CLIENT_SECRET,
+                    "KEYCLOAK_CLIENT_SECRET",
+                    "dev-keycloak-secret"
+                ),
+                grant_type: "refresh_token",
+                refresh_token: token.refreshToken,
+            }),
+        })
+        const refreshed = await response.json()
+        if (!response.ok) throw refreshed
+        return {
+            ...token,
+            accessToken: refreshed.access_token,
+            refreshToken: refreshed.refresh_token ?? token.refreshToken,
+            accessTokenExpiresAt: Date.now() + (refreshed.expires_in ?? 300) * 1000,
+            role: roleFromKeycloakToken(refreshed.access_token) ?? token.role,
+        }
+    } catch (error) {
+        console.error("Keycloak token refresh failed:", error)
+        return { ...token, error: "RefreshAccessTokenError" }
+    }
+}
+
 export const authOptions = {
     providers,
     secret: nextAuthSecret,
@@ -89,19 +136,37 @@ export const authOptions = {
         async jwt({ token, account, user }: any) {
             if (account) {
                 token.accessToken = account.access_token
+                token.refreshToken = account.refresh_token
+                token.accessTokenExpiresAt = Date.now() + (account.expires_in ?? 300) * 1000
                 if (account.provider === "keycloak" && account.access_token) {
                     token.role = roleFromKeycloakToken(account.access_token) ?? token.role
+                    token.username = usernameFromKeycloakToken(account.access_token) ?? token.username
                 }
             }
             if (user?.role) {
                 token.role = user.role
             }
-            return token
+            // Dev credentials login has no Keycloak token; fall back to the
+            // login name as the displayed/executing identity.
+            if (!token.username && user?.name) {
+                token.username = user.name
+            }
+            // Still valid — reuse as-is.
+            if (!token.accessTokenExpiresAt || Date.now() < token.accessTokenExpiresAt - 30_000) {
+                return token
+            }
+            // Expired: refresh when possible (Keycloak sessions only).
+            if (!token.refreshToken) return token
+            return refreshAccessToken(token)
         },
         async session({ session, token }: any) {
             session.accessToken = token.accessToken
+            session.error = token.error
             if (token.role) {
                 session.user.role = token.role
+            }
+            if (token.username) {
+                session.user.username = token.username
             }
             return session
         }

@@ -77,6 +77,10 @@ Frequently needed keys:
 | `keycloak-admin-password` | Keycloak admin console |
 | `superset-admin-password` | Superset bootstrap admin |
 | `oauth2-proxy-oidc-secret` / `oauth2-proxy-cookie-secret` | The SSO gate in front of the Trino UI and Milvus Attu |
+| `trino-panel-svc-password` | Trino `control-panel-svc` user (Control Panel server-side admin queries) |
+| `trino-superset-password` | Trino `superset` user (Superset datasource) |
+| `trino-mcp-password` | Trino `mcp` user (MCP server, read-only) |
+| `trino-dev-admin-password` / `trino-dev-user-password` | Trino dev users for the Control Panel's local credentials login |
 | `polaris-client-id` / `polaris-client-secret` / `polaris-credential` | Polaris bootstrap credential (`id:secret` combined form for Trino) |
 | `minio-root-user` / `minio-root-password` | MinIO root account |
 | `<client>-oidc-secret` | Per-service Keycloak client secrets (`trino`, `airflow`, `minio`, `superset`, `control-panel`…) |

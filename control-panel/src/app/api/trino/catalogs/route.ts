@@ -38,22 +38,32 @@ async function requireAdmin() {
 // Use the external ingress hostname as fallback so it works when running control-panel locally
 const TRINO_URL = process.env.TRINO_URL || "http://trino.aetherlake.local";
 
-// "user:pass" for the basic-auth gate on the Trino ingress. Leave unset when
-// TRINO_URL points at the in-cluster service, which has no gate.
-const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
-    ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
-    : {};
+// Trino authenticates every caller (PASSWORD,JWT). These server-side admin
+// queries run as the control-panel-svc service user — its password lives in
+// the aetherlake-credentials secret (trino-panel-svc-password key) and the
+// user sits in the data-admin access-control group (needed for the system
+// catalog queries below).
+async function svcAuthHeader(): Promise<Record<string, string>> {
+    const res = await k8sApi.readNamespacedSecret({ name: "aetherlake-credentials", namespace: NAMESPACE });
+    const body = (res as any).body || res;
+    const encoded = body?.data?.["trino-panel-svc-password"];
+    if (!encoded) {
+        throw new Error("trino-panel-svc-password missing from aetherlake-credentials — re-run install.sh");
+    }
+    const password = Buffer.from(String(encoded), "base64").toString("utf-8");
+    return { Authorization: `Basic ${Buffer.from(`control-panel-svc:${password}`).toString("base64")}` };
+}
 
 // Helper: run a Trino SQL query server-side (reuses the polling loop from /api/query)
 async function trinoQuery(sql: string): Promise<{ columns: any[]; data: any[][] }> {
+    const authHeaders = await svcAuthHeader();
     let targetUrl = `${TRINO_URL}/v1/statement`;
     let config: RequestInit = {
         method: "POST",
         headers: {
-            "X-Trino-User": "admin",
+            ...authHeaders,
             "X-Trino-Source": "control-panel-trino-mgmt",
             "Content-Type": "text/plain",
-            ...TRINO_AUTH_HEADER,
         },
         body: sql,
     };
@@ -88,10 +98,9 @@ async function trinoQuery(sql: string): Promise<{ columns: any[]; data: any[][] 
             config = {
                 method: "GET",
                 headers: {
-                    "X-Trino-User": "admin",
+                    ...authHeaders,
                     "X-Trino-Source": "control-panel-trino-mgmt",
                     "Content-Type": "text/plain",
-                    ...TRINO_AUTH_HEADER,
                 },
             };
             await new Promise((resolve) => setTimeout(resolve, 300));

@@ -100,6 +100,20 @@ editor — including streamed data:
 SELECT * FROM kafka.aetherlake.events LIMIT 10;
 ```
 
+**Queries run as you, not as a shared app user.** For Keycloak logins the
+panel forwards your own access token and Trino executes the statement under
+your username (JWT verification); for the local dev login it authenticates as
+the matching dev user. The toolbar shows the identity ("Executed as …"), and
+Trino's role-based access control decides what you can do:
+
+- the schema explorer lists only catalogs/schemas/tables your role may touch
+  (`SHOW …` is filtered server-side);
+- `data-scientist` runs SELECTs but gets *Access Denied* on writes and the
+  `system` catalog; `data-engineer` can create/drop Iceberg tables;
+  `data-admin` has full access.
+
+See [Trino — Authentication & Authorization](./components/trino#authentication-every-query-runs-as-a-real-user).
+
 ## Trino Management
 
 ![Trino catalogs](/trino.png)

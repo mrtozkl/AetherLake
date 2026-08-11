@@ -11,7 +11,9 @@ export default function QueryIDE() {
     const { data: session, status } = useSession({ required: true });
     const { t } = useLocale();
 
-    const [query, setQuery] = useState("SELECT * FROM system.runtime.nodes LIMIT 10");
+    // SHOW CATALOGS works for every role; the system catalog is admin-only,
+    // so it must not be the default statement.
+    const [query, setQuery] = useState("SHOW CATALOGS");
     const [running, setRunning] = useState(false);
     const [results, setResults] = useState<{ columns: any[], data: any[][] } | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -140,10 +142,17 @@ export default function QueryIDE() {
                     <div className="h-1/2 panel-card flex flex-col overflow-hidden">
                         <div className="flex items-center justify-between px-4 py-2 border-b border-cardBorder bg-surface">
                             <span className="text-xs font-semibold uppercase text-muted tracking-wide">{t("query.sqlEditor")}</span>
-                            <button onClick={() => runQuery(query)} disabled={running || !query.trim()} className="btn-primary text-xs py-1.5 px-3">
-                                {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                                {running ? t("query.executing") : t("query.runQuery")}
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {/* Queries run under the logged-in identity: Keycloak
+                                    username (JWT verified by Trino) or the dev login name. */}
+                                <span className="text-[11px] text-muted bg-card-hover rounded px-2 py-1" title="Trino principal">
+                                    {t("query.executedAs")}: <span className="font-semibold text-secondary">{(session?.user as any)?.username || session?.user?.name || "—"}</span>
+                                </span>
+                                <button onClick={() => runQuery(query)} disabled={running || !query.trim()} className="btn-primary text-xs py-1.5 px-3">
+                                    {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                                    {running ? t("query.executing") : t("query.runQuery")}
+                                </button>
+                            </div>
                         </div>
                         <div className="flex-1 bg-[#1e1e1e]">
                             <Editor height="100%" language="sql" theme="vs-dark" value={query} onChange={(val) => setQuery(val || "")}

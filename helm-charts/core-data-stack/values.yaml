@@ -61,6 +61,14 @@ trino:
   enabled: true
   server:
     workers: 2
+    config:
+      # Real per-user authentication (no more trusted X-Trino-User header):
+      # PASSWORD — file authenticator for service users (superset, mcp,
+      # control-panel-svc) and the Control Panel dev-credentials login.
+      # JWT — Keycloak access tokens forwarded by the Control Panel for
+      # interactive users; Trino validates them itself and derives the
+      # principal from preferred_username.
+      authenticationType: "PASSWORD,JWT"
   # Trino sits behind the nginx ingress, which injects X-Forwarded-* headers. By
   # default airlift's HTTP server rejects forwarded requests with HTTP 406
   # ("Server configuration does not allow processing of the X-Forwarded-For
@@ -70,9 +78,59 @@ trino:
     - http-server.process-forwarded=true
     # Trino's Web UI defaults to a username login form (login.html). Humans
     # are already authenticated by Keycloak at the ingress (oauth2-proxy), so
-    # run the UI with the fixed service user instead of a second login.
+    # run the UI with the fixed service user instead of a second login. The
+    # fixed user is intentionally read-only (data-scientist group).
     - web-ui.authentication.type=fixed
     - web-ui.user=aetherlake-ui
+    # JWT verification against the aetherlake realm. Keycloak's JWKS endpoint
+    # is http:// only, and Trino fetches JWKS exclusively over https — so
+    # install.sh pulls the realm's active RSA public key into the
+    # trino-jwt-key ConfigMap (mounted below) instead. Re-run install.sh after
+    # rotating realm keys. principal-field maps the Trino user to the
+    # Keycloak username (the default `sub` claim is an opaque UUID).
+    - http-server.authentication.jwt.key-file=/etc/trino/auth/jwt/key.pem
+    - http-server.authentication.jwt.principal-field=preferred_username
+    - http-server.authentication.jwt.required-issuer=http://keycloak.aetherlake.local/realms/aetherlake
+  configMounts:
+    - name: trino-jwt-key
+      configMap: trino-jwt-key
+      path: /etc/trino/auth/jwt/key.pem
+      subPath: key.pem
+  # File-based system access control. Groups mirror the Keycloak realm roles;
+  # membership (group.db) and the password file (password.db) contain
+  # credential material and are injected by install.sh via trino.auth.*,
+  # never committed here. Rules: admins get everything; engineers get
+  # read-write on data catalogs (schema ownership on iceberg, so CREATE/DROP
+  # work) but not the system catalog; scientists and service accounts are
+  # read-only. SHOW CATALOGS/SHOW TABLES are filtered by these rules
+  # automatically. Add a per-user rule above the group rules to carve out
+  # exceptions.
+  accessControl:
+    type: configmap
+    refreshPeriod: 10s
+    configFile: rules.json
+    rules:
+      rules.json: |-
+        {
+          "catalogs": [
+            { "group": "data-admin", "allow": "all" },
+            { "group": "data-engineer", "catalog": "system", "allow": "none" },
+            { "group": "data-engineer", "allow": "all" },
+            { "group": "data-scientist", "catalog": "system", "allow": "none" },
+            { "group": "data-scientist", "allow": "read-only" },
+            { "allow": "none" }
+          ],
+          "schemas": [
+            { "group": "data-admin", "owner": true },
+            { "group": "data-engineer", "catalog": "iceberg", "owner": true },
+            { "owner": false }
+          ],
+          "queries": [
+            { "group": "data-admin", "allow": ["execute", "view", "kill"] },
+            { "group": "data-engineer", "allow": ["execute", "view"] },
+            { "allow": ["execute"] }
+          ]
+        }
   env:
     # Inject S3 credentials securely into the Trino pods
     - name: MINIO_ACCESS_KEY
@@ -355,12 +413,16 @@ superset:
         superset import_datasources -p /app/configs/import_datasources.yaml || true
       fi
 
-  # Auto-provision Trino database connection on startup
+  # Auto-provision Trino database connection on startup. Trino now requires
+  # authentication, so the URI must carry the `superset` service-user
+  # password — install.sh overrides this file with the real credential
+  # (trino-superset-password key). The URI below is only a shape reference
+  # for bare `helm install` runs.
   extraConfigs:
     import_datasources.yaml: |
       databases:
         - database_name: "Trino Analytics"
-          sqlalchemy_uri: "trino://admin@core-data-stack-trino:8080/iceberg"
+          sqlalchemy_uri: "trino://superset@core-data-stack-trino:8080/iceberg"
           expose_in_sqllab: true
           allow_run_async: true
 

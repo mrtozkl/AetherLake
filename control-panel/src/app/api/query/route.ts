@@ -1,12 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
+import * as k8s from "@kubernetes/client-node";
 
-// "user:pass" for the basic-auth gate on the Trino ingress. Leave unset when
-// TRINO_URL points at the in-cluster service, which has no gate.
-const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
-    ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
-    : {};
+const kc = new k8s.KubeConfig();
+kc.loadFromDefault();
+const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+
+// Read one key from the platform credentials secret (dev-login Trino
+// passwords). Fails soft: undefined when the cluster/secret is unreachable.
+async function getSecretKey(key: string): Promise<string | undefined> {
+    try {
+        const res = await k8sApi.readNamespacedSecret({ name: "aetherlake-credentials", namespace: "aetherlake" });
+        const body = (res as any).body || res;
+        const value = body?.data?.[key];
+        return value ? Buffer.from(String(value), "base64").toString("utf-8") : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+// Resolve how this request authenticates to Trino. Trino enforces
+// PASSWORD,JWT (no trusted X-Trino-User header anymore), so every query goes
+// to the coordinator under a real identity:
+// - Keycloak login  → the user's own access token (Bearer); Trino validates
+//   the JWT and runs the query as the Keycloak username.
+// - Dev credentials login → PASSWORD auth as the matching dev user, password
+//   pulled from the aetherlake-credentials secret.
+async function resolveTrinoAuth(session: any): Promise<{ headers: Record<string, string>; trinoUser: string }> {
+    if (session?.accessToken) {
+        const trinoUser = session.user?.username || session.user?.name || "unknown";
+        return {
+            headers: { Authorization: `Bearer ${session.accessToken}` },
+            trinoUser,
+        };
+    }
+    const username = session?.user?.name;
+    const secretKey =
+        username === "admin" ? "trino-dev-admin-password"
+        : username === "user" ? "trino-dev-user-password"
+        : undefined;
+    const password = secretKey ? await getSecretKey(secretKey) : undefined;
+    if (username && password) {
+        return {
+            headers: { Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` },
+            trinoUser: username,
+        };
+    }
+    throw new Error("No Trino credential available for this session (expired Keycloak token or missing trino-dev-*-password secret key)");
+}
 
 export async function POST(req: NextRequest) {
     try {
@@ -22,20 +64,21 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Query is required" }, { status: 400 });
         }
 
-        // We extract the user's email or default to 'admin' if not mapped perfectly.
-        // In Keycloak, SSO usually populates email. Trino expects just a string identifier.
-        // By injecting X-Trino-User, Trino RBAC checks the identity natively against authorized catalogs.
-        const trinoUser = session.user.email || session.user.name || "admin";
+        let auth: { headers: Record<string, string>; trinoUser: string };
+        try {
+            auth = await resolveTrinoAuth(session);
+        } catch (err: any) {
+            return NextResponse.json({ error: err.message }, { status: 401 });
+        }
 
         const baseUrl = process.env.TRINO_URL || "http://trino.aetherlake.local";
         let targetUrl = `${baseUrl}/v1/statement`;
         let config = {
             method: "POST",
             headers: {
-                "X-Trino-User": trinoUser,
+                ...auth.headers,
                 "X-Trino-Source": "control-panel-ide",
                 "Content-Type": "text/plain",
-                ...TRINO_AUTH_HEADER,
             },
             body: query
         };
@@ -63,7 +106,11 @@ export async function POST(req: NextRequest) {
 
             if (!response.ok) {
                 const errText = await response.text();
-                return NextResponse.json({ error: `Trino Request Failed: ${response.statusText}`, details: errText }, { status: response.status });
+                const statusHint =
+                    response.status === 401 ? " (authentication failed — session may have expired)"
+                    : response.status === 403 ? " (access denied — your role does not allow this operation)"
+                    : "";
+                return NextResponse.json({ error: `Trino Request Failed: ${response.statusText}${statusHint}`, details: errText }, { status: response.status });
             }
 
             const jsonResponse = await response.json();
@@ -85,10 +132,9 @@ export async function POST(req: NextRequest) {
                 config = {
                     method: "GET",
                     headers: {
-                        "X-Trino-User": trinoUser,
+                        ...auth.headers,
                         "X-Trino-Source": "control-panel-ide",
                         "Content-Type": "text/plain",
-                        ...TRINO_AUTH_HEADER,
                     },
                     body: undefined
                 } as any;
@@ -101,7 +147,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        return NextResponse.json({ columns: finalColumns, data: finalData });
+        return NextResponse.json({ columns: finalColumns, data: finalData, executedAs: auth.trinoUser });
 
     } catch (error: any) {
         console.error("Query Execute Error:", error);

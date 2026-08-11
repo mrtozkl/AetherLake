@@ -26,10 +26,11 @@ function requireAirflowAuth(): string {
   return AIRFLOW_AUTH;
 }
 
-// Legacy "user:pass" Basic auth header. The Trino ingress gate moved from
-// nginx basic auth to Keycloak SSO (oauth2-proxy), which non-interactive
-// clients cannot pass — point TRINO_URL at the in-cluster service or a
-// port-forward instead and leave this unset.
+// "user:pass" for Trino's PASSWORD (file) authenticator — Trino rejects
+// unauthenticated requests now. Use the mcp service user:
+// TRINO_BASIC_AUTH=mcp:<trino-mcp-password>. Point TRINO_URL at the in-cluster
+// service or a port-forward; the ingress host is gated by Keycloak SSO
+// (oauth2-proxy), which non-interactive clients cannot pass.
 const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
   ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
   : {};

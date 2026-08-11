@@ -35,14 +35,27 @@ by a `keycloak-config-cli` Job after Keycloak starts.
 | `minio` | MinIO console | `minio-oidc-secret` |
 | `superset` | Superset | `superset-oidc-secret` |
 
+### Trino validates tokens directly
+
+Beyond browser SSO, Trino also verifies `aetherlake-client` access tokens on
+its own: the Control Panel forwards the logged-in user's token with every SQL
+query, and Trino accepts it after checking the realm's RSA key
+(`trino-jwt-key` ConfigMap, maintained by `install.sh`). That is how each
+query runs under the submitter's own username and role — see
+[Trino — Authentication](./trino#authentication-every-query-runs-as-a-real-user).
+
 ### Realm roles → app roles
 
-| Realm role | Airflow | Superset | MinIO policy |
-|------------|---------|----------|--------------|
-| `data-admin` | `Admin` | `Admin` | `consoleAdmin` |
-| `data-engineer` | `Op` | `Alpha` | — |
-| `data-scientist` | `User` | `Alpha` | — |
-| *(others)* | `Public` | `Gamma` | — |
+| Realm role | Trino group | Airflow | Superset | MinIO policy |
+|------------|-------------|---------|----------|--------------|
+| `data-admin` | `data-admin` | `Admin` | `Admin` | `consoleAdmin` |
+| `data-engineer` | `data-engineer` | `Op` | `Alpha` | — |
+| `data-scientist` | `data-scientist` | `User` | `Alpha` | — |
+| *(others)* | *(none)* | `Public` | `Gamma` | — |
+
+Trino group membership is maintained in `install.sh` (the `group.db` it
+renders) — assign the realm role *and* add the username to the matching
+group line.
 
 ## SSO gate (oauth2-proxy)
 

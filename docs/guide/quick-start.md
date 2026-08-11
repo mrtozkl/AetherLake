@@ -86,7 +86,9 @@ kubectl get secret aetherlake-credentials -n aetherlake \
 ```
 
 The Superset admin password is under `superset-admin-password`, the Keycloak
-admin-console password under `keycloak-admin-password`.
+admin-console password under `keycloak-admin-password`. The MCP server's Trino
+service user (`mcp:<password>`) is under `trino-mcp-password` — see
+[MCP Server](./mcp-server).
 
 Start the Control Panel locally with:
 
