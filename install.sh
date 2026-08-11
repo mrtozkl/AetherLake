@@ -107,6 +107,12 @@ TRINO_DEV_USER_PASSWORD="${TRINO_DEV_USER_PASSWORD:-$(gen_secret)}"
 TRINO_SUPERSET_PASSWORD="$(gen_secret)"
 TRINO_MCP_PASSWORD="$(gen_secret)"
 TRINO_PANEL_SVC_PASSWORD="$(gen_secret)"
+# Trino requires internal-communication.shared-secret once HTTP authentication
+# is on (coordinator <-> worker calls).
+TRINO_INTERNAL_SHARED_SECRET="$(gen_secret)"
+# Password of the PKCS12 keystore cert-manager renders into the trino-tls
+# secret (aetherlake-tls.yaml). Trino's HTTPS listener opens it at startup.
+TRINO_KEYSTORE_PASSWORD="$(gen_secret)"
 
 # Create a credentials secret from the shared values above. Pass the name as $1.
 create_credentials_secret() {
@@ -145,7 +151,9 @@ create_credentials_secret() {
         --from-literal=trino-dev-user-password="$TRINO_DEV_USER_PASSWORD" \
         --from-literal=trino-superset-password="$TRINO_SUPERSET_PASSWORD" \
         --from-literal=trino-mcp-password="$TRINO_MCP_PASSWORD" \
-        --from-literal=trino-panel-svc-password="$TRINO_PANEL_SVC_PASSWORD"
+        --from-literal=trino-panel-svc-password="$TRINO_PANEL_SVC_PASSWORD" \
+        --from-literal=trino-internal-shared-secret="$TRINO_INTERNAL_SHARED_SECRET" \
+        --from-literal=trino-keystore-password="$TRINO_KEYSTORE_PASSWORD"
 }
 
 # Add a key to an existing secret only if it is missing — lets upgrades of
@@ -178,6 +186,8 @@ for secret_name in open-lake-credentials aetherlake-credentials; do
     ensure_secret_key "$secret_name" trino-superset-password "$TRINO_SUPERSET_PASSWORD"
     ensure_secret_key "$secret_name" trino-mcp-password "$TRINO_MCP_PASSWORD"
     ensure_secret_key "$secret_name" trino-panel-svc-password "$TRINO_PANEL_SVC_PASSWORD"
+    ensure_secret_key "$secret_name" trino-internal-shared-secret "$TRINO_INTERNAL_SHARED_SECRET"
+    ensure_secret_key "$secret_name" trino-keystore-password "$TRINO_KEYSTORE_PASSWORD"
 done
 
 # Airflow secret for the official Apache Airflow chart. One secret holds the
@@ -330,6 +340,22 @@ for i in 1 2 3 4 5; do
     sleep 10
 done
 
+# Publish the root CA inside the aetherlake namespace so cluster-internal
+# TLS clients can verify Trino's service certificate: mounted by the
+# demo-data job, and exported to control-panel/.ca/ for local development
+# (Node needs NODE_EXTRA_CA_CERTS to trust it).
+AETHERLAKE_CA_CRT="$(kubectl get secret aetherlake-root-ca -n cert-manager -o jsonpath='{.data.ca\.crt}' | base64 -d)"
+if [ -z "$AETHERLAKE_CA_CRT" ]; then
+    echo "❌ Failed to read the aetherlake-root-ca certificate."
+    exit 1
+fi
+kubectl create configmap aetherlake-ca -n aetherlake \
+    --from-literal=ca.crt="$AETHERLAKE_CA_CRT" \
+    --dry-run=client -o yaml | kubectl apply -f -
+mkdir -p control-panel/.ca
+printf '%s\n' "$AETHERLAKE_CA_CRT" > control-panel/.ca/aetherlake-ca.crt
+echo "   CA published: configmap aetherlake-ca + control-panel/.ca/aetherlake-ca.crt"
+
 # 5c. Deploy Core Data Stack
 echo "📊 Deploying Core Data Stack..."
 cd helm-charts/core-data-stack
@@ -369,6 +395,8 @@ TRINO_DEV_USER_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n a
 TRINO_SUPERSET_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-superset-password}' | base64 -d)"
 TRINO_MCP_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-mcp-password}' | base64 -d)"
 TRINO_PANEL_SVC_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-panel-svc-password}' | base64 -d)"
+TRINO_INTERNAL_SHARED_SECRET_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-internal-shared-secret}' | base64 -d)"
+TRINO_KEYSTORE_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.trino-keystore-password}' | base64 -d)"
 
 # Trino auth override: credential material never lives in committed values.
 # password.db — PASSWORD (file) authenticator entries; group.db — maps Trino
@@ -376,9 +404,28 @@ TRINO_PANEL_SVC_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n 
 # To give a new Keycloak user a role, add their username to the matching
 # group line below and re-run install.sh.
 echo "🧂 Rendering Trino password.db / group.db..."
-TRINO_AUTH_VALUES="$(mktemp /tmp/aetherlake-trino-auth-values.XXXXXX.yaml)"
+# (BSD mktemp requires the X placeholder at the end of the template.)
+TRINO_AUTH_VALUES="$(mktemp /tmp/aetherlake-trino-auth-values.XXXXXX)"
 {
     echo "trino:"
+    echo "  server:"
+    # Coordinator-only config. Trino fails to start over properties a node does
+    # not consume, so web-ui.* and the JWT verification keys (both coordinator-
+    # only) must stay out of additionalConfigProperties, which also lands on
+    # workers. JWT: Keycloak's JWKS endpoint is http:// while Trino fetches
+    # JWKS over https:// only — hence the locally mounted realm key
+    # (trino-jwt-key ConfigMap, re-fetched above on every run). The internal
+    # shared secret is required on BOTH node types once authentication is on.
+    echo "    coordinatorExtraConfig: |"
+    echo "      web-ui.authentication.type=fixed"
+    echo "      web-ui.user=aetherlake-ui"
+    echo "      http-server.authentication.jwt.key-file=/etc/trino/auth/jwt/key.pem"
+    echo "      http-server.authentication.jwt.principal-field=preferred_username"
+    echo "      http-server.authentication.jwt.required-issuer=http://keycloak.aetherlake.local/realms/aetherlake"
+    echo "      http-server.https.keystore.key=${TRINO_KEYSTORE_PASSWORD_ACTUAL}"
+    echo "      internal-communication.shared-secret=${TRINO_INTERNAL_SHARED_SECRET_ACTUAL}"
+    echo "    workerExtraConfig: |"
+    echo "      internal-communication.shared-secret=${TRINO_INTERNAL_SHARED_SECRET_ACTUAL}"
     echo "  auth:"
     echo "    passwordAuth: |"
     echo "      admin:$(hash_password "$TRINO_DEV_ADMIN_PASSWORD_ACTUAL")"
@@ -388,15 +435,24 @@ TRINO_AUTH_VALUES="$(mktemp /tmp/aetherlake-trino-auth-values.XXXXXX.yaml)"
     echo "      control-panel-svc:$(hash_password "$TRINO_PANEL_SVC_PASSWORD_ACTUAL")"
     echo "    groups: |"
     echo "      data-admin:admin,control-panel-svc"
-    echo "      data-scientist:user,superset,mcp,aetherlake-ui"
+    echo "      data-engineer:elif"
+    echo "      data-scientist:user,deniz,superset,mcp,aetherlake-ui"
     echo "superset:"
+    # Trino over TLS: the datasource connects to the HTTPS port with the
+    # superset service-user password (read-only data-scientist identity).
+    # The AetherLake CA is mounted at /app/configs/trino-ca.pem and appended
+    # to certifi's bundle by the chart's bootstrapScript (a global
+    # REQUESTS_CA_BUNDLE would break pip's pypi.org verification).
     echo "  extraConfigs:"
+    echo "    trino-ca.pem: |"
+    printf '%s\n' "$AETHERLAKE_CA_CRT" | sed 's/^/      /'
     echo "    import_datasources.yaml: |"
     echo "      databases:"
     echo "        - database_name: \"Trino Analytics\""
-    echo "          sqlalchemy_uri: \"trino://superset:${TRINO_SUPERSET_PASSWORD_ACTUAL}@core-data-stack-trino:8080/iceberg\""
+    echo "          sqlalchemy_uri: \"trino://superset:${TRINO_SUPERSET_PASSWORD_ACTUAL}@core-data-stack-trino:8443/iceberg\""
     echo "          expose_in_sqllab: true"
     echo "          allow_run_async: true"
+    echo "          extra: \"{\\\"engine_params\\\": {\\\"connect_args\\\": {\\\"http_scheme\\\": \\\"https\\\"}}}\""
 } > "$TRINO_AUTH_VALUES"
 
 # --skip-crds: the CRDs above are bootstrapped with kubectl server-side apply

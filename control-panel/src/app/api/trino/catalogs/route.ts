@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
+import { TRINO_URL, trinoFetch, getSecretKey } from "../../../../trino";
 import * as k8s from "@kubernetes/client-node";
 
 const kc = new k8s.KubeConfig();
@@ -35,22 +36,16 @@ async function requireAdmin() {
     }
     return null;
 }
-// Use the external ingress hostname as fallback so it works when running control-panel locally
-const TRINO_URL = process.env.TRINO_URL || "http://trino.aetherlake.local";
-
-// Trino authenticates every caller (PASSWORD,JWT). These server-side admin
-// queries run as the control-panel-svc service user — its password lives in
-// the aetherlake-credentials secret (trino-panel-svc-password key) and the
-// user sits in the data-admin access-control group (needed for the system
-// catalog queries below).
+// Trino authenticates every caller over TLS (PASSWORD,JWT). These server-side
+// admin queries run as the control-panel-svc service user — its password
+// lives in the aetherlake-credentials secret (trino-panel-svc-password key)
+// and the user sits in the data-admin access-control group (needed for the
+// system catalog queries below).
 async function svcAuthHeader(): Promise<Record<string, string>> {
-    const res = await k8sApi.readNamespacedSecret({ name: "aetherlake-credentials", namespace: NAMESPACE });
-    const body = (res as any).body || res;
-    const encoded = body?.data?.["trino-panel-svc-password"];
-    if (!encoded) {
+    const password = await getSecretKey("trino-panel-svc-password");
+    if (!password) {
         throw new Error("trino-panel-svc-password missing from aetherlake-credentials — re-run install.sh");
     }
-    const password = Buffer.from(String(encoded), "base64").toString("utf-8");
     return { Authorization: `Basic ${Buffer.from(`control-panel-svc:${password}`).toString("base64")}` };
 }
 
@@ -72,7 +67,7 @@ async function trinoQuery(sql: string): Promise<{ columns: any[]; data: any[][] 
     let finalColumns: any[] = [];
     let isDone = false;
 
-    let response = await fetch(targetUrl, config);
+    let response = await trinoFetch(targetUrl, config);
 
     while (!isDone) {
         if (!response.ok) {
@@ -104,7 +99,7 @@ async function trinoQuery(sql: string): Promise<{ columns: any[]; data: any[][] 
                 },
             };
             await new Promise((resolve) => setTimeout(resolve, 300));
-            response = await fetch(json.nextUri, config);
+            response = await trinoFetch(json.nextUri, config);
         } else {
             isDone = true;
         }

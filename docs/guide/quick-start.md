@@ -90,6 +90,12 @@ admin-console password under `keycloak-admin-password`. The MCP server's Trino
 service user (`mcp:<password>`) is under `trino-mcp-password` — see
 [MCP Server](./mcp-server).
 
+Two demo users ship with the realm to try per-role access in the SQL IDE
+(password for both: `aetherlake-demo`):
+
+- `elif` — `data-engineer` (read-write, no `system` catalog)
+- `deniz` — `data-scientist` (read-only)
+
 Start the Control Panel locally with:
 
 ```bash

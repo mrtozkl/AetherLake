@@ -1,32 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
-import * as k8s from "@kubernetes/client-node";
+import { TRINO_URL, trinoFetch, getSecretKey } from "../../../trino";
 
-const kc = new k8s.KubeConfig();
-kc.loadFromDefault();
-const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-
-// Read one key from the platform credentials secret (dev-login Trino
-// passwords). Fails soft: undefined when the cluster/secret is unreachable.
-async function getSecretKey(key: string): Promise<string | undefined> {
-    try {
-        const res = await k8sApi.readNamespacedSecret({ name: "aetherlake-credentials", namespace: "aetherlake" });
-        const body = (res as any).body || res;
-        const value = body?.data?.[key];
-        return value ? Buffer.from(String(value), "base64").toString("utf-8") : undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-// Resolve how this request authenticates to Trino. Trino enforces
-// PASSWORD,JWT (no trusted X-Trino-User header anymore), so every query goes
-// to the coordinator under a real identity:
+// Resolve how this request authenticates to Trino. Trino verifies both
+// mechanisms itself over TLS (PASSWORD,JWT):
 // - Keycloak login  → the user's own access token (Bearer); Trino validates
-//   the JWT and runs the query as the Keycloak username.
+//   the JWT against the realm key and runs the query as that username.
 // - Dev credentials login → PASSWORD auth as the matching dev user, password
-//   pulled from the aetherlake-credentials secret.
+//   read from the aetherlake-credentials secret.
 async function resolveTrinoAuth(session: any): Promise<{ headers: Record<string, string>; trinoUser: string }> {
     if (session?.accessToken) {
         const trinoUser = session.user?.username || session.user?.name || "unknown";
@@ -71,8 +53,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: err.message }, { status: 401 });
         }
 
-        const baseUrl = process.env.TRINO_URL || "http://trino.aetherlake.local";
-        let targetUrl = `${baseUrl}/v1/statement`;
+        let targetUrl = `${TRINO_URL}/v1/statement`;
         let config = {
             method: "POST",
             headers: {
@@ -94,7 +75,7 @@ export async function POST(req: NextRequest) {
         const MAX_POLLS = 1000;
         let polls = 0;
 
-        let response = await fetch(targetUrl, config);
+        let response = await trinoFetch(targetUrl, config);
 
         while (!isDone) {
             if (++polls > MAX_POLLS) {
@@ -141,7 +122,7 @@ export async function POST(req: NextRequest) {
 
                 // Add a small delay for large queries to prevent tight looping CPU burn
                 await new Promise(resolve => setTimeout(resolve, 300));
-                response = await fetch(targetUrl, config);
+                response = await trinoFetch(targetUrl, config);
             } else {
                 isDone = true;
             }

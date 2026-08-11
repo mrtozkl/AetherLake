@@ -81,6 +81,8 @@ Frequently needed keys:
 | `trino-superset-password` | Trino `superset` user (Superset datasource) |
 | `trino-mcp-password` | Trino `mcp` user (MCP server, read-only) |
 | `trino-dev-admin-password` / `trino-dev-user-password` | Trino dev users for the Control Panel's local credentials login |
+| `trino-internal-shared-secret` | Trino coordinator↔worker shared secret (required once authentication is on) |
+| `trino-keystore-password` | Password of the PKCS12 keystore cert-manager renders into `trino-tls` (Trino HTTPS listener) |
 | `polaris-client-id` / `polaris-client-secret` / `polaris-credential` | Polaris bootstrap credential (`id:secret` combined form for Trino) |
 | `minio-root-user` / `minio-root-password` | MinIO root account |
 | `<client>-oidc-secret` | Per-service Keycloak client secrets (`trino`, `airflow`, `minio`, `superset`, `control-panel`…) |

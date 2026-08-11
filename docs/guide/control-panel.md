@@ -112,6 +112,10 @@ Trino's role-based access control decides what you can do:
   `system` catalog; `data-engineer` can create/drop Iceberg tables;
   `data-admin` has full access.
 
+All Trino calls go over TLS (port 8443); the panel verifies the AetherLake
+CA automatically — from `control-panel/.ca/aetherlake-ca.crt` locally (exported
+by `install.sh`) or from the `aetherlake-ca` ConfigMap in-cluster.
+
 See [Trino — Authentication & Authorization](./components/trino#authentication-every-query-runs-as-a-real-user).
 
 ## Trino Management

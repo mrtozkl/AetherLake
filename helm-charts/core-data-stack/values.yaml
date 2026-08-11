@@ -67,35 +67,50 @@ trino:
       # control-panel-svc) and the Control Panel dev-credentials login.
       # JWT — Keycloak access tokens forwarded by the Control Panel for
       # interactive users; Trino validates them itself and derives the
-      # principal from preferred_username.
+      # principal from preferred_username. Both are cryptographically
+      # verified because every client connects over TLS (below).
       authenticationType: "PASSWORD,JWT"
+      # HTTPS listener for all real traffic. The keystore is rendered by
+      # cert-manager into the trino-tls secret (aetherlake-tls.yaml); the
+      # keystore password is injected by install.sh via
+      # server.coordinatorExtraConfig (http-server.https.keystore.key).
+      # The plain-HTTP port stays up for the chart's liveness probe and
+      # internal discovery only — with authentication enabled and
+      # allow-insecure-over-http left at its default (false), client requests
+      # on it are rejected outright.
+      https:
+        enabled: true
+        port: 8443
+        keystore:
+          path: /etc/trino/tls/keystore.p12
   # Trino sits behind the nginx ingress, which injects X-Forwarded-* headers. By
   # default airlift's HTTP server rejects forwarded requests with HTTP 406
   # ("Server configuration does not allow processing of the X-Forwarded-For
   # header"), breaking both the Trino web UI and the Control Panel SQL IDE that
   # call /v1/statement through trino.aetherlake.local. Allow processing them.
+  # NOTE: properties in this list land on BOTH coordinator and workers, so
+  # only node-agnostic ones belong here. Coordinator-only settings (web-ui.*,
+  # the JWT verification keys, the HTTPS keystore password) plus the internal
+  # shared secret are rendered into server.coordinatorExtraConfig /
+  # workerExtraConfig by install.sh — Trino refuses to start on unused
+  # properties per node.
   additionalConfigProperties:
     - http-server.process-forwarded=true
-    # Trino's Web UI defaults to a username login form (login.html). Humans
-    # are already authenticated by Keycloak at the ingress (oauth2-proxy), so
-    # run the UI with the fixed service user instead of a second login. The
-    # fixed user is intentionally read-only (data-scientist group).
-    - web-ui.authentication.type=fixed
-    - web-ui.user=aetherlake-ui
-    # JWT verification against the aetherlake realm. Keycloak's JWKS endpoint
-    # is http:// only, and Trino fetches JWKS exclusively over https — so
-    # install.sh pulls the realm's active RSA public key into the
-    # trino-jwt-key ConfigMap (mounted below) instead. Re-run install.sh after
-    # rotating realm keys. principal-field maps the Trino user to the
-    # Keycloak username (the default `sub` claim is an opaque UUID).
-    - http-server.authentication.jwt.key-file=/etc/trino/auth/jwt/key.pem
-    - http-server.authentication.jwt.principal-field=preferred_username
-    - http-server.authentication.jwt.required-issuer=http://keycloak.aetherlake.local/realms/aetherlake
+  # TLS material: cert-manager-managed trino-tls secret (tls.crt/tls.key/
+  # ca.crt + keystore.p12). Mounted on every node; only the coordinator
+  # serves HTTPS, workers just ignore the extra files.
+  secretMounts:
+    - name: trino-tls
+      secretName: trino-tls
+      path: /etc/trino/tls
+  # Directory mount (not a subPath file mount): Docker Desktop's runc rejects
+  # subPath file mounts here with "not a directory" during container init.
+  # The ConfigMap holds only key.pem, so mounting it whole at .../jwt yields
+  # the same /etc/trino/auth/jwt/key.pem path reliably.
   configMounts:
     - name: trino-jwt-key
       configMap: trino-jwt-key
-      path: /etc/trino/auth/jwt/key.pem
-      subPath: key.pem
+      path: /etc/trino/auth/jwt
   # File-based system access control. Groups mirror the Keycloak realm roles;
   # membership (group.db) and the password file (password.db) contain
   # credential material and are injected by install.sh via trino.auth.*,
@@ -413,16 +428,17 @@ superset:
         superset import_datasources -p /app/configs/import_datasources.yaml || true
       fi
 
-  # Auto-provision Trino database connection on startup. Trino now requires
-  # authentication, so the URI must carry the `superset` service-user
-  # password — install.sh overrides this file with the real credential
-  # (trino-superset-password key). The URI below is only a shape reference
-  # for bare `helm install` runs.
+  # Auto-provision Trino database connection on startup. Trino requires
+  # authentication over TLS, so the URI carries the `superset` service-user
+  # password and connects to the HTTPS port — install.sh overrides this file
+  # with the real credential (trino-superset-password key) plus the cluster
+  # CA for verification. The URI below is only a shape reference for bare
+  # `helm install` runs.
   extraConfigs:
     import_datasources.yaml: |
       databases:
         - database_name: "Trino Analytics"
-          sqlalchemy_uri: "trino://superset@core-data-stack-trino:8080/iceberg"
+          sqlalchemy_uri: "trino://superset@core-data-stack-trino:8443/iceberg"
           expose_in_sqllab: true
           allow_run_async: true
 
@@ -433,6 +449,18 @@ superset:
   # "DistributionNotFound: cryptography".
   bootstrapScript: |
     #!/bin/bash
+    # Trust the AetherLake CA for Superset's Trino connections (TLS, 8443):
+    # append it to certifi's bundle so requests-based clients verify it.
+    # Deliberately NOT a global REQUESTS_CA_BUNDLE env var — that would make
+    # pip verify pypi.org against only our CA and break these installs.
+    if [ -f /app/configs/trino-ca.pem ]; then
+      PYBIN=python
+      [ -x /app/.venv/bin/python ] && PYBIN=/app/.venv/bin/python
+      CA_TARGET="$($PYBIN -c 'import certifi; print(certifi.where())' 2>/dev/null || true)"
+      if [ -n "$CA_TARGET" ]; then
+        cat /app/configs/trino-ca.pem >> "$CA_TARGET"
+      fi
+    fi
     PIP_PKGS="sqlalchemy-trino Authlib PyJWT cryptography>=42.0.4,<43.0.0"
     if [ -f /app/.venv/bin/pip ]; then
       /app/.venv/bin/pip install $PIP_PKGS

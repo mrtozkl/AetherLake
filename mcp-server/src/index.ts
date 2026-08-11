@@ -27,10 +27,11 @@ function requireAirflowAuth(): string {
 }
 
 // "user:pass" for Trino's PASSWORD (file) authenticator — Trino rejects
-// unauthenticated requests now. Use the mcp service user:
-// TRINO_BASIC_AUTH=mcp:<trino-mcp-password>. Point TRINO_URL at the in-cluster
-// service or a port-forward; the ingress host is gated by Keycloak SSO
-// (oauth2-proxy), which non-interactive clients cannot pass.
+// unauthenticated requests. Use the mcp service user:
+// TRINO_BASIC_AUTH=mcp:<trino-mcp-password>. Trino serves HTTPS only; point
+// TRINO_URL at the in-cluster service (https://core-data-stack-trino:8443)
+// or a port-forward, and run Node with NODE_EXTRA_CA_CERTS set to the
+// AetherLake root CA (aetherlake-root-ca secret, cert-manager namespace).
 const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
   ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
   : {};
