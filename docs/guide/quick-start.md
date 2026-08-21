@@ -134,6 +134,8 @@ kubectl patch deployment metrics-server -n kube-system --type=json \
   and producing from outside the cluster (TLS + SCRAM).
 - [Flink — Stream Processing](./components/flink) — submit SQL jobs from the
   Control Panel.
+- [Data Pipelines](./pipelines) — ready-to-run streaming jobs including the
+  Kafka-to-Iceberg lakehouse bridge (`kafka-to-iceberg.sql`).
 - [Control Panel](./control-panel) — the Kafka view, Flink SQL workspace, SQL
   IDE and observability.
 - [Architecture](./architecture) — how the pieces fit together.

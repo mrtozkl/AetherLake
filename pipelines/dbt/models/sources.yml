@@ -4,6 +4,31 @@ sources:
   - name: bronze
     database: iceberg
     schema: lakehouse.bronze
+    description: "Raw data landed into MinIO S3 and cataloged in Apache Polaris REST catalog."
     tables:
       - name: user_events
-        description: "Raw events ingested from MinIO into Iceberg Bronze layer"
+        description: "Raw streaming clickstream and interaction events ingested via Flink & Kafka."
+        columns:
+          - name: user_id
+            description: "Identifier of the user who triggered the event."
+            data_tests:
+              - not_null
+          - name: event
+            description: "Raw event action type (e.g. click, view, purchase)."
+          - name: content
+            description: "JSON payload containing event properties."
+          - name: ingested_at
+            description: "Timestamp when the record was received."
+      - name: telemetry_stream
+        description: "Sensor and infrastructure metrics streamed from edge collectors."
+        columns:
+          - name: device_id
+            description: "Unique device identifier."
+            data_tests:
+              - not_null
+          - name: metric_name
+            description: "Name of the collected metric."
+          - name: metric_value
+            description: "Numeric reading value."
+          - name: recorded_at
+            description: "Timestamp of measurement."

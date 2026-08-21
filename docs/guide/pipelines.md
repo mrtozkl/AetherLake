@@ -20,12 +20,29 @@ Ready-made examples live in `pipelines/flink/examples/`:
 | Script | What it does |
 |--------|--------------|
 | `datagen-to-kafka.sql` | Generates synthetic events (datagen connector) and streams them to the `events` topic |
+| `kafka-to-iceberg.sql` | **The lakehouse bridge:** consumes the `events` topic and appends to the Iceberg table `iceberg.demo.events_stream` through the Polaris REST catalog |
 | `kafka-to-print.sql` | Consumes the `events` topic and prints each record (job smoke test) |
 
 Submit them from the Control Panel (**Apache Flink → Submit Job**) — each job
 runs as its own application-mode `FlinkDeployment` on the SQL runner image
 built by `install.sh`. Full reference, manual manifest submission and
 operations: [Flink — Stream Processing](./components/flink).
+
+### Kafka → Iceberg bridge
+
+`kafka-to-iceberg.sql` registers the Polaris catalog as a Flink Iceberg
+catalog (`CREATE CATALOG lakehouse … 'catalog-type'='rest'`) and runs a
+statement set that inserts topic rows into `lakehouse.demo.events_stream`.
+Iceberg commits on checkpoint (`execution.checkpointing.interval = 30s`), so
+rows land in the table a few seconds after they are produced:
+
+```sql
+SELECT * FROM iceberg.demo.events_stream LIMIT 10;   -- in Trino
+```
+
+Credentials never appear in the SQL: the Control Panel injects
+`POLARIS_CREDENTIAL`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` into the job pod,
+and the SQL runner substitutes `${ENV:...}` placeholders before parsing.
 
 ## Apache Spark
 
@@ -59,22 +76,25 @@ MinIO and Polaris services.
 Run transformations against Trino using dbt:
 
 ```bash
+export TRINO_DEV_ADMIN_PASSWORD="$(kubectl get secret aetherlake-credentials \
+  -n aetherlake -o jsonpath='{.data.trino-dev-admin-password}' | base64 -d)"
+
 cd pipelines/dbt
 dbt run --profiles-dir .
 ```
 
-`profiles.yml` targets the in-cluster Trino service
-(`core-data-stack-trino:8080`, catalog `iceberg`), so run dbt inside the
-cluster or port-forward the service first:
+`profiles.yml` connects over **HTTPS with Basic auth** (`method: ldap` in
+dbt-trino terminology) to `core-data-stack-trino:8443` as the dev `admin`
+user — see [Trino — Authentication](./components/trino#authentication-every-query-runs-as-a-real-user).
+Run dbt inside the cluster or port-forward the TLS port first:
 
 ```bash
-kubectl port-forward -n aetherlake svc/core-data-stack-trino 8080:8080
+kubectl port-forward -n aetherlake svc/core-data-stack-trino 8443:8443
 ```
 
-::: tip
-The in-cluster Trino service is not gated — the Keycloak SSO gate only sits on
-the ingress route (see [Trino](./components/trino)).
-:::
+(then point `host:` at `localhost`, and `verify:` at the exported AetherLake
+CA — `kubectl get secret aetherlake-root-ca -n cert-manager -o
+jsonpath='{.data.ca\.crt}' | base64 -d > aetherlake-ca.crt`).
 
 ## Apache Airflow
 

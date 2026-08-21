@@ -1,9 +1,10 @@
 # Apache Kafka — Streaming Platform
 
 Kafka provides the durable event-streaming layer: Flink SQL jobs consume and
-produce topics, and future pipelines can bridge Kafka into the Iceberg
-lakehouse. It is deployed by the Strimzi cluster operator in KRaft mode
-(no ZooKeeper) as a single dual-role node, sized for local clusters.
+produce topics, and the [kafka-to-iceberg bridge](./flink#kafka-iceberg-bridge)
+streams topic rows into the Iceberg lakehouse. It is deployed by the Strimzi
+cluster operator in KRaft mode (no ZooKeeper) as a single dual-role node,
+sized for local clusters.
 
 - **Chart:** `strimzi-kafka-operator` `1.1.0` from `strimzi.io/charts/`
 - **Kafka version:** 4.3.0 (KRaft, `KafkaNodePool` with controller + broker roles)
@@ -137,6 +138,12 @@ spec:
   replicas: 1
 EOF
 ```
+
+## Control Panel
+
+The `/kafka` view in the Control Panel provides live visibility into cluster health, broker statuses, and topic configurations:
+
+![Kafka Management UI](/kafka.png)
 
 ## Related
 

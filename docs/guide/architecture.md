@@ -47,6 +47,8 @@ graph TD
         Trino -->|kafka catalog| Kafka
         FlinkOp -->|reconciles| FlinkJob
         FlinkJob -->|produce / consume| Kafka
+        FlinkJob -->|Iceberg REST| Polaris
+        FlinkJob -->|S3| MinIO
     end
 
     ingress -->|SSO check| OA
@@ -154,6 +156,25 @@ sequenceDiagram
 External producers/consumers connect through the `external` listener
 (nodeport, TLS + SCRAM-SHA-512, `KafkaUser` credentials) — see
 [Kafka — Producing from outside the cluster](./components/kafka#producing-from-outside-the-cluster).
+
+## Streaming lakehouse bridge (Kafka → Flink → Iceberg → Trino)
+
+```mermaid
+sequenceDiagram
+    participant K as Kafka (events topic)
+    participant F as Flink SQL job (kafka-to-iceberg)
+    participant P as Polaris (REST Catalog)
+    participant M as MinIO (S3 Object Storage)
+    participant T as Trino (Iceberg Catalog)
+    F->>K: Consume streaming rows (JSON format)
+    F->>P: Resolve table metadata & schema
+    F->>M: Write Parquet data files (S3FileIO)
+    F->>P: Commit snapshot on checkpoint (30s interval)
+    T->>P: Fetch latest snapshot
+    T->>M: Query Iceberg data (SELECT * FROM iceberg.demo.events_stream)
+```
+
+See [Data Pipelines — Kafka-to-Iceberg Bridge](./pipelines#kafka-iceberg-bridge).
 
 ## Lakehouse write path (Trino → Polaris → MinIO)
 

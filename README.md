@@ -5,6 +5,7 @@
   <img src="https://img.shields.io/badge/Trino-DD00A1?style=for-the-badge&logo=trino&logoColor=white" alt="Trino" />
   <img src="https://img.shields.io/badge/Apache%20Kafka-231F20?style=for-the-badge&logo=apachekafka&logoColor=white" alt="Kafka" />
   <img src="https://img.shields.io/badge/Apache%20Flink-E6526F?style=for-the-badge&logo=apacheflink&logoColor=white" alt="Flink" />
+  <img src="https://img.shields.io/badge/dbt-FF694B?style=for-the-badge&logo=dbt&logoColor=white" alt="dbt" />
   <img src="https://img.shields.io/badge/License-BUSL%201.1-blue?style=for-the-badge" alt="License" />
 </p>
 
@@ -16,7 +17,7 @@
 
 <p align="center">
   Storage, catalog, query, streaming, BI and identity — one <code>helm install</code>.<br/>
-  <a href="#-quick-start">Quick Start</a> · <a href="#-components">Components</a> · <a href="#-streaming-kafka--flink">Streaming</a> · <a href="#-single-sign-on">SSO</a> · <a href="#-configuration">Configuration</a>
+  <a href="#-quick-start">Quick Start</a> · <a href="#-components">Components</a> · <a href="#-streaming-kafka--flink">Streaming</a> · <a href="#-dbt-lakehouse-transformations">dbt</a> · <a href="#-single-sign-on">SSO</a> · <a href="#-configuration">Configuration</a>
 </p>
 
 ---
@@ -31,7 +32,8 @@ managed from a single web Control Panel.
 - 🏗️ **Modular** — every component behind a single `values.yaml` toggle
 - 🔐 **Secure by default** — Keycloak SSO for every UI, random per-install secrets
 - 🌊 **Streaming** — Kafka (Strimzi) + Flink SQL jobs, queryable from Trino
-- 🎛️ **Unified control** — Next.js Control Panel (EN/TR) for status, SQL, catalogs, Kafka and Flink
+- 🔄 **dbt Lakehouse** — Medallion modeling (Bronze → Silver → Gold) with visual DAG Lineage
+- 🎛️ **Unified control** — Next.js Control Panel (EN/TR) for status, SQL, catalogs, Kafka, Flink, and dbt
 
 ---
 
@@ -75,6 +77,7 @@ Per-component deep dives (settings, diagrams, operations) live in
 | [Apache Polaris](https://polaris.apache.org/) | Iceberg REST catalog | Postgres metastore |
 | [Apache Kafka](https://kafka.apache.org/) | Streaming (Strimzi, KRaft) | 4.3.0 |
 | [Apache Flink](https://flink.apache.org/) | Stream processing (SQL jobs) | 2.1 / Operator 1.15 |
+| [dbt](https://www.getdbt.com/) | Medallion modeling & Lineage | 1.8 (dbt-trino) |
 | [Apache Airflow](https://airflow.apache.org/) | Orchestration | 2.10.5 |
 | [Apache Superset](https://superset.apache.org/) | BI & dashboards | 3.1.2 |
 | [Apache Spark](https://spark.apache.org/) | Batch processing | Operator 1.1.27 |
@@ -127,16 +130,44 @@ plain HTTP stays on because the SSO issuer URLs are `http://`.
 
 ## 🎛️ Control Panel
 
-- **Overview** — pod health, restarts, one-click service restarts; Kafka card links to the Kafka view
-- **Kafka** — cluster status/version, broker health, topics (partitions, replicas, config, conditions)
-- **Flink** — SQL IDE workspace: Kafka topic explorer, Monaco editor, submit/cancel jobs, live status
-- **SQL IDE** — Trino queries with schema explorer (Iceberg *and* Kafka catalogs)
-- **Trino / Polaris** — catalog & namespace management
-- **Observability** — live logs, events, per-pod metrics
-- **i18n & RBAC** — English/Turkish, admin-gated actions
+A unified web console built with Next.js 16 (Turbopack, TypeScript, Tailwind CSS) providing centralized platform visibility and operations:
+
+<p align="center">
+  <img src="assets/dashboard.png" alt="Overview Dashboard" width="49%" />
+  <img src="assets/dbt.png" alt="dbt Lakehouse Workspace" width="49%" />
+</p>
+<p align="center">
+  <img src="assets/flink.png" alt="Flink SQL Workspace" width="49%" />
+  <img src="assets/kafka.png" alt="Kafka Management" width="49%" />
+</p>
+
+- **Overview** — pod health, restarts, memory/CPU usage, and one-click service restarts
+- **dbt Workspace & Lineage** — interactive DAG graph (Bronze → Silver → Gold), model inspector, Monaco SQL viewer, and run triggers
+- **Kafka** — KRaft cluster status, broker readiness, topics (partitions, replicas, configs, and conditions)
+- **Flink SQL** — interactive streaming workspace: topic explorer, Monaco SQL editor, job submission, and live status
+- **SQL IDE** — federated Trino queries with schema tree explorer across Iceberg and Kafka catalogs
+- **Iceberg Tables & Catalogs** — explore Polaris namespaces, table schemas, snapshots, and partition metadata
+- **Observability** — live container logs, Kubernetes events, and detailed pod metrics
+- **i18n & RBAC** — bilingual (English/Turkish) with role-based action gating (`data-admin`, `data-scientist`, `data-engineer`)
 
 ```bash
 cd control-panel && npm install && npm run dev   # → http://localhost:3000
+```
+
+---
+
+## 🔄 dbt Lakehouse Transformations
+
+Transform raw data using the Medallion Architecture (`pipelines/dbt/`):
+
+- **Bronze (Raw):** Clickstream (`user_events`) and sensor data (`telemetry_stream`) landed via Kafka and Flink.
+- **Silver (Curated):** Cleansed and partitioned Parquet Iceberg tables (`stg_user_events`, `stg_users`).
+- **Gold (Marts):** Aggregated metrics and dimensional marts (`fct_daily_user_metrics`, `fct_event_summary`) consumed by Superset and Trino.
+
+```bash
+cd pipelines/dbt
+dbt run --profiles-dir .
+dbt test --profiles-dir .
 ```
 
 ---
@@ -145,14 +176,10 @@ cd control-panel && npm install && npm run dev   # → http://localhost:3000
 
 Enable with `kafka.enabled` / `flink.enabled` (both default `true`).
 
-- **Kafka** runs KRaft-mode Strimzi with a `KafkaTopic` `events`; Flink SQL jobs
-  read/write it via the pre-installed Kafka connector
-  (`pipelines/flink/examples/`).
-- **Flink SQL jobs** are submitted from the Control Panel; each runs as an
-  application-mode FlinkDeployment. The runner image is built by `install.sh`.
-- **Kafka in Trino:** topics are queryable as SQL tables —
-  `SELECT * FROM kafka.aetherlake.events` (schemas in
-  `trino.kafka.tableDescriptions`).
+- **Kafka (KRaft Mode):** Provisioned by Strimzi 1.1.0 with a pre-configured `events` topic; Flink SQL jobs produce/consume topics via the built-in Kafka connector (`pipelines/flink/examples/`).
+- **Flink SQL Runner:** Each submission creates an isolated application-mode `FlinkDeployment` mini-cluster using `aetherlake/flink-sql-runner:flink-2.1` built by `install.sh`.
+- **Kafka → Iceberg Lakehouse Bridge:** Continuous streaming ETL from Kafka topics directly into Apache Iceberg tables via Polaris REST catalog and MinIO S3FileIO (`pipelines/flink/examples/kafka-to-iceberg.sql`). Platform credentials (`POLARIS_CREDENTIAL`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`) are dynamically injected and resolved via `${ENV:...}` placeholders.
+- **Kafka in Trino:** Topics queryable directly as SQL tables via `SELECT * FROM kafka.aetherlake.events` (configured in `trino.kafka.tableDescriptions`).
 
 ### Producing from outside the cluster
 

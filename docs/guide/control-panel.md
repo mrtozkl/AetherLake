@@ -55,6 +55,8 @@ numbers are hidden, and the page shows a notice.
 
 ## Kafka
 
+![Kafka management](/kafka.png)
+
 The **Kafka** page (`/kafka`) reads the Strimzi custom resources through
 `/api/kafka` and shows:
 
@@ -70,6 +72,8 @@ external (SCRAM-authenticated) access.
 
 ## Flink SQL
 
+![Flink SQL workspace](/flink.png)
+
 The **Flink** page (`/flink`) is a workspace for Flink SQL jobs:
 
 - **Topic explorer** — lists Kafka topics; clicking one inserts a Kafka
@@ -83,8 +87,28 @@ The **Flink** page (`/flink`) is a workspace for Flink SQL jobs:
   `FlinkDeployment` and its SQL ConfigMap.
 
 Ready-made scripts to try live in `pipelines/flink/examples/`
-(datagen → Kafka, Kafka → print). Full reference:
-[Flink — Stream Processing](./components/flink).
+(datagen → Kafka, Kafka → Iceberg lakehouse bridge, Kafka → print). Platform
+credentials (`POLARIS_CREDENTIAL`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`) are
+automatically injected into job pods and resolved via `${ENV:...}` placeholders.
+Full reference: [Flink — Stream Processing](./components/flink).
+
+## dbt Workspace & Lineage
+
+![dbt Lakehouse Workspace](/dbt.png)
+
+The **dbt** workspace (`/dbt`) provides visual management and monitoring for
+Lakehouse data transformations:
+
+- **Interactive Lineage DAG** — visual dependency graph spanning Bronze sources,
+  Silver curated tables, and Gold analytics marts with zoom/pan and dependency tracing.
+- **Model Explorer & Inspector** — inspect model metadata, tags, partitioning specs,
+  raw Jinja SQL, and compiled Trino SQL in an embedded Monaco editor.
+- **Data Quality & Tests** — review column-level schema definitions and assertions
+  (`unique`, `not_null`, `accepted_values`).
+- **Run & Test Actions** — trigger `dbt run` and `dbt test` directly against the
+  Trino cluster and view live execution logs and durations.
+
+Full reference: [dbt — Data Transformations](./components/dbt).
 
 ## SQL IDE
 
