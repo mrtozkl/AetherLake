@@ -61,6 +61,84 @@ under the License.
             <artifactId>flink-sql-connector-kafka</artifactId>
             <version>5.0.0-2.1</version>
         </dependency>
+        <!-- Iceberg tables via the Polaris REST catalog (kafka-to-iceberg
+             bridge). Runtime jar for Flink 2.1; includes the AWS bundle so
+             S3FileIO can write the MinIO-backed warehouse. -->
+        <dependency>
+            <groupId>org.apache.iceberg</groupId>
+            <artifactId>iceberg-flink-runtime-2.1</artifactId>
+            <version>1.11.0</version>
+        </dependency>
+        <!-- FlinkCatalogFactory.clusterHadoopConf loads a Hadoop Configuration
+             for every catalog type (REST included), so hadoop-common must be
+             on the classpath; HadoopUtils also references HdfsConfiguration
+             (hdfs-site merge) → hadoop-hdfs-client. Server-side pieces
+             (jetty, jersey, servlets, ZooKeeper/Kerberos) are excluded —
+             only the conf API is used. -->
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-hdfs-client</artifactId>
+            <version>3.3.6</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <version>3.3.6</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.eclipse.jetty</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.sun.jersey</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>javax.servlet</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.curator</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.zookeeper</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.kerby</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.avro</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.jcraft</groupId>
+                    <artifactId>jsch</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-reload4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>ch.qos.reload4j</groupId>
+                    <artifactId>reload4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>log4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <!-- Logging: excluded from the fat jar by the shade configuration. -->
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -86,6 +164,12 @@ under the License.
             <version>${log4j.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -103,12 +187,14 @@ under the License.
                         </goals>
                         <configuration>
                             <artifactSet>
-                                <excludes>
-                                    <exclude>org.apache.flink:flink-shaded-force-shading</exclude>
-                                    <exclude>com.google.code.findbugs:jsr305</exclude>
-                                    <exclude>org.slf4j:*</exclude>
-                                    <exclude>org.apache.logging.log4j:*</exclude>
-                                </excludes>
+                                <includes>
+                                    <!-- Thin runner jar: connector and Hadoop jars are
+                                         copied separately into /opt/flink/lib by the
+                                         Dockerfile, because catalog factories resolve
+                                         classes through Flink's app classloader, which
+                                         cannot see the per-job usrlib jar. -->
+                                    <include>org.apache.flink:flink-sql-runner-example</include>
+                                </includes>
                             </artifactSet>
                             <filters>
                                 <filter>

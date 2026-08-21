@@ -16,10 +16,21 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation
 data:
   seed.py: |
-    import json, os, sys, time, urllib.request
+    import base64, json, os, sys, time, urllib.request
 
-    TRINO = os.environ.get("TRINO_URL", "http://core-data-stack-trino:8080")
-    HDR = {"X-Trino-User": "admin", "Content-Type": "text/plain"}
+    TRINO = os.environ.get("TRINO_URL", "https://core-data-stack-trino:8443")
+    # Trino serves HTTPS with the AetherLake CA; SSL_CERT_FILE points at the
+    # mounted bundle so urllib verifies it. Queries run as the dev admin
+    # user (data-admin group) through the PASSWORD file authenticator.
+    USER = os.environ.get("TRINO_USER", "admin")
+    PASSWORD = os.environ.get("TRINO_PASSWORD", "")
+    AUTH = {}
+    if PASSWORD:
+        AUTH["Authorization"] = "Basic " + base64.b64encode(
+            f"{USER}:{PASSWORD}".encode()).decode()
+    else:
+        AUTH["X-Trino-User"] = USER
+    HDR = {**AUTH, "Content-Type": "text/plain"}
 
     def q(sql):
         req = urllib.request.Request(TRINO + "/v1/statement", data=sql.encode(), method="POST", headers=HDR)
@@ -39,7 +50,7 @@ data:
                 return ("OK", data)
             time.sleep(0.2)
             try:
-                with urllib.request.urlopen(urllib.request.Request(nxt, headers={"X-Trino-User": "admin"}), timeout=30) as r:
+                with urllib.request.urlopen(urllib.request.Request(nxt, headers=AUTH), timeout=30) as r:
                     j = json.loads(r.read())
             except Exception as e:
                 return ("ERROR", str(e))
@@ -105,13 +116,30 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - name: TRINO_URL
-              value: "http://{{ .Release.Name }}-trino:8080"
+              value: "https://{{ .Release.Name }}-trino:8443"
+            - name: TRINO_USER
+              value: "admin"
+            - name: TRINO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: trino-dev-admin-password
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/aetherlake/ca.crt
           command: ["python", "/scripts/seed.py"]
           volumeMounts:
             - name: seed
               mountPath: /scripts
+            - name: aetherlake-ca
+              mountPath: /etc/ssl/aetherlake
+              readOnly: true
       volumes:
         - name: seed
           configMap:
             name: {{ .Release.Name }}-demo-data
+        # Root CA bundle rendered by install.sh from the cert-manager root
+        # certificate; lets the job verify Trino's service certificate.
+        - name: aetherlake-ca
+          configMap:
+            name: aetherlake-ca
 {{- end }}

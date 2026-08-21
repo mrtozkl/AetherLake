@@ -19,6 +19,36 @@
           "temporary": true
         }
       ]
+    },
+    {
+      "username": "elif",
+      "email": "elif@aetherlake.local",
+      "firstName": "Elif",
+      "lastName": "Demo",
+      "enabled": true,
+      "realmRoles": ["data-engineer"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "aetherlake-demo",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "deniz",
+      "email": "deniz@aetherlake.local",
+      "firstName": "Deniz",
+      "lastName": "Demo",
+      "enabled": true,
+      "realmRoles": ["data-scientist"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "aetherlake-demo",
+          "temporary": false
+        }
+      ]
     }
   ],
   "roles": {

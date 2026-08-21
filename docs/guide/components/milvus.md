@@ -6,8 +6,10 @@ external object store. **Attu** is the web UI.
 
 - **Chart:** `milvus` `5.0.14` from `zilliztech.github.io/milvus-helm`
 - **Mode:** standalone (cluster disabled to save resources)
-- **Ingress (Attu UI):** `milvus.aetherlake.local` → `core-data-stack-milvus-attu:3000`
-- **gRPC:** `core-data-stack-milvus:19530`
+- **Ingress (Attu UI):** `milvus.aetherlake.local` → `core-data-stack-milvus-attu:3000`,
+  gated by **Keycloak SSO** through oauth2-proxy (nginx external auth) — Attu
+  itself has no authentication, so the ingress route must never be open
+- **gRPC:** `core-data-stack-milvus:19530` (cluster-internal only)
 
 ## Architecture
 
@@ -84,9 +86,12 @@ Verified live: standalone comes up `1/1`, `/healthz` returns `OK`.
 ## Operations
 
 ```bash
-# Attu UI
+# Attu UI — the first visit redirects through the Keycloak SSO gate
 open http://milvus.aetherlake.local
 
 # Standalone logs
 kubectl logs -n aetherlake -l app.kubernetes.io/name=milvus,component=standalone --tail=50
 ```
+
+See [Keycloak — SSO gate](./keycloak#sso-gate-oauth2-proxy) for how the
+oauth2-proxy gate works.

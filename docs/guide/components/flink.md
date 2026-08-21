@@ -11,8 +11,10 @@ are isolated and cancellation is just a resource delete.
 - **Job runtime:** Flink `2.1` (`flinkVersion: v2_1`) via the SQL runner image
 - **SQL runner image:** `aetherlake/flink-sql-runner:flink-2.1` — built by
   `install.sh` from `pipelines/flink/sql-runner` (the Apache
-  `flink-sql-runner-example` on a `flink:2.1` base, with the Kafka SQL
-  connector shaded into the fat jar)
+  `flink-sql-runner-example` on a `flink:2.1` base). The thin runner jar sits
+  in `usrlib`; the connector jars (Kafka SQL connector, Iceberg Flink runtime,
+  Hadoop) are placed in `/opt/flink/lib`, because catalog factories resolve
+  classes through Flink's app classloader, which cannot see `usrlib`.
 - **Control Panel:** `/flink` page (submit / list / view SQL / cancel)
 - **Ingress:** none — job dashboards are per-cluster and only reachable in-cluster
 
@@ -32,7 +34,27 @@ Each submission creates two resources: a ConfigMap `<name>-sql` holding the
 script and a `FlinkDeployment` whose pod template mounts it at
 `/opt/flink/sql/job.sql`. The runner image's entrypoint executes the script
 statement by statement through `TableEnvironment#executeSql` (SET statements
-and `EXECUTE STATEMENT SET` are supported).
+and `EXECUTE STATEMENT SET` are supported). Before parsing, `${ENV:NAME}`
+placeholders are replaced with environment variables — the Control Panel
+injects platform credentials (`POLARIS_CREDENTIAL`, `MINIO_ACCESS_KEY`,
+`MINIO_SECRET_KEY`) into every job pod so SQL never embeds secrets.
+
+## Kafka → Iceberg bridge
+
+The flagship streaming pipeline lands Kafka rows in the lakehouse:
+`pipelines/flink/examples/kafka-to-iceberg.sql` registers the Polaris catalog
+(`CREATE CATALOG lakehouse … 'catalog-type'='rest'`, OAuth2 credential from
+`${ENV:POLARIS_CREDENTIAL}`) and inserts the `events` topic into
+`lakehouse.demo.events_stream` (S3FileIO against MinIO, checkpoint-commit
+every 30s). Landed rows are immediately visible to Trino:
+
+```sql
+SELECT * FROM iceberg.demo.events_stream LIMIT 10;
+```
+
+Pair it with `datagen-to-kafka.sql` (or any SCRAM producer) to watch the lake
+grow in real time. See [Data Pipelines](../pipelines#kafka-iceberg-bridge) for
+the full walkthrough.
 
 ## Key settings (`core-data-stack/values.yaml` → `flink`)
 
@@ -74,7 +96,7 @@ spec:
 ```
 
 Ready-made scripts live in `pipelines/flink/examples/` (datagen → Kafka,
-Kafka → print).
+Kafka → Iceberg, Kafka → print).
 
 ::: tip
 The operator's admission webhook needs cert-manager. `install.sh` provisions
@@ -106,6 +128,12 @@ kubectl logs -n aetherlake -l app=my-kafka-etl,component=jobmanager
 # Cancel a job (deletes its mini-cluster and, for Control Panel jobs, the SQL ConfigMap)
 kubectl delete flinkdeployment my-kafka-etl -n aetherlake
 ```
+
+## Control Panel
+
+The `/flink` workspace in the Control Panel lets you write SQL with syntax highlighting, browse available Kafka topics, and monitor/cancel streaming FlinkDeployments:
+
+![Flink SQL Workspace UI](/flink.png)
 
 ## Related
 

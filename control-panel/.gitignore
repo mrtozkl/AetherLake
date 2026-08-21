@@ -39,3 +39,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# AetherLake root CA exported by install.sh (trusted by local dev TLS calls)
+.ca/

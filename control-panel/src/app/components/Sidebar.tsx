@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useLocale } from "../locale-provider";
 import {
     LayoutDashboard, Database, Network, Code2,
-    LogOut, ChevronDown, Globe, BarChart3, Activity, Table2, Waves, Radio
+    LogOut, ChevronDown, Globe, BarChart3, Activity, Table2, Waves, Radio, GitFork
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
     { href: "/polaris", labelKey: "nav.polaris" as const, icon: Network },
     { href: "/kafka", labelKey: "nav.kafka" as const, icon: Radio },
     { href: "/flink", labelKey: "nav.flink" as const, icon: Waves },
+    { href: "/dbt", labelKey: "nav.dbt" as const, icon: GitFork },
     { href: "/query", labelKey: "nav.query" as const, icon: Code2 },
 ];
 

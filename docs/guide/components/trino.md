@@ -4,23 +4,103 @@ Trino runs distributed SQL over the Iceberg catalog (Polaris) and other sources.
 It is the query engine behind Superset and the Control Panel.
 
 - **Chart:** `trino` `1.42.2` (Trino **480**) from `trinodb.github.io/charts`
-- **Ingress:** `trino.aetherlake.local` → `core-data-stack-trino:8080` — gated by
-  **Keycloak SSO** through oauth2-proxy (nginx external auth). Trino itself runs
-  unauthenticated and trusts the `X-Trino-User` header, so the ingress route
-  must never be open. The Control Panel and the MCP server call Trino through
-  the in-cluster service and are unaffected by the gate.
-- **In-cluster:** `http://core-data-stack-trino:8080` (no gate — cluster network only)
+- **Ingress:** `trino.aetherlake.local` → `core-data-stack-trino:8080` — the
+  browser route is additionally gated by **Keycloak SSO** through oauth2-proxy
+  (nginx external auth). Every request is then authenticated by Trino itself
+  (`PASSWORD,JWT`), so neither the gate nor the cluster network alone grants
+  anything. Behind the gate the web UI runs with the fixed service user
+  (`web-ui.authentication.type=fixed`, `web-ui.user=aetherlake-ui`), which is
+  intentionally **read-only**. See
+  [Keycloak — SSO gate](./keycloak#sso-gate-oauth2-proxy).
+- **In-cluster:** `https://core-data-stack-trino:8443` — TLS all the way;
+  clients verify the AetherLake CA (see below). There is no unauthenticated
+  path to the query API.
 
 ## Architecture
 
 ```mermaid
 graph LR
-    Coord[trino-coordinator] --> W1[worker]
+    CP[Control Panel] -->|user's Keycloak JWT| Coord
+    Superset -->|SQLAlchemy trino://superset| Coord[trino-coordinator]
+    Coord --> W1[worker]
     Coord --> W2[worker]
     Coord -->|Iceberg REST + OAuth2| Polaris
     Coord -->|S3 path-style| MinIO
-    Superset -->|SQLAlchemy trino://| Coord
 ```
+
+## Authentication — every query runs as a real user
+
+Trino authenticates every request (`http-server.authentication.type=PASSWORD,JWT`);
+the old trust-the-`X-Trino-User`-header mode is gone.
+
+**JWT — interactive users.** The Control Panel forwards the logged-in user's
+Keycloak access token (`Authorization: Bearer …`); Trino validates it against
+the aetherlake realm and maps the principal from `preferred_username`. So a
+query submitted by `alice` runs in Trino as `alice`.
+
+- The realm RSA public key is mounted from the `trino-jwt-key` ConfigMap that
+  `install.sh` fetches through the Keycloak admin API. Keycloak's JWKS
+  endpoint is `http://` only while Trino fetches JWKS over `https://` only —
+  hence the mounted PEM. Re-run `install.sh` after rotating realm keys.
+- `http-server.authentication.jwt.required-issuer=http://keycloak.aetherlake.local/realms/aetherlake`
+
+**PASSWORD (file authenticator) — service & dev users.** `password.db` is
+rendered by `install.sh` (PBKDF2 hashes, never committed):
+
+| User | Used by | Secret key |
+|------|---------|------------|
+| `control-panel-svc` | Control Panel server-side admin queries (catalog page) | `trino-panel-svc-password` |
+| `superset` | Superset's Trino datasource | `trino-superset-password` |
+| `mcp` | MCP server (`TRINO_BASIC_AUTH=mcp:<password>`) | `trino-mcp-password` |
+| `admin`, `user` | Control Panel dev-credentials login (dev only) | `trino-dev-admin-password`, `trino-dev-user-password` |
+
+## TLS — everything over HTTPS
+
+Authentication is only meaningful because it is cryptographically checked,
+which requires TLS — Trino serves HTTPS on **8443**:
+
+- `aetherlake-tls.yaml` defines a cert-manager `Certificate`
+  (`core-data-stack-trino`, in-cluster DNS names, `trino.aetherlake.local`,
+  plus `localhost`/`127.0.0.1` for port-forward use), signed by the
+  AetherLake CA. cert-manager renders a PKCS12 keystore (`keystore.p12`)
+  into the `trino-tls` secret; Trino opens it with the
+  `trino-keystore-password` secret key (injected by `install.sh`).
+- The nginx ingress forwards to the HTTPS port
+  (`backend-protocol: HTTPS`), so the browser path is TLS end to end.
+- CA distribution for verification:
+  - `aetherlake-ca` ConfigMap (namespace `aetherlake`) — mounted by the
+    demo-data seed job (`SSL_CERT_FILE`) and readable by in-cluster clients.
+  - `control-panel/.ca/aetherlake-ca.crt` — exported by `install.sh` for
+    local development; the panel's Trino client pins it automatically.
+  - Any other client: export the root CA and trust it
+    (`NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `curl --cacert`, …).
+- The plain-HTTP port (8080) remains for the chart's liveness probe and
+  internal discovery only. With authentication enabled, Trino rejects
+  client requests over plain HTTP (`allow-insecure-over-http` stays off),
+  so no identity can be asserted without TLS.
+
+## Authorization — per-role access control
+
+File-based system access control (`trino.accessControl`, rules reload without
+restart) + a file group provider map the Keycloak realm roles to Trino
+permissions. Group membership lives in `group.db` (rendered by `install.sh` —
+add new Keycloak usernames to a group line there and re-run `install.sh`).
+
+| Group | Members | Catalogs | Notes |
+|-------|---------|----------|-------|
+| `data-admin` | `admin`, `control-panel-svc` | all, incl. `system` | view/kill any query; schema ownership everywhere |
+| `data-engineer` | `elif` (demo), plus usernames assigned in install.sh | all except `system` | read-write; schema ownership on `iceberg` enables CREATE/DROP |
+| `data-scientist` | `deniz` (demo), `user`, `superset`, `mcp`, `aetherlake-ui` | read-only, no `system` | SELECT only |
+
+Visibility follows permissions automatically: `SHOW CATALOGS` / `SHOW SCHEMAS`
+/ `SHOW TABLES` only list what the current user may touch, so the SQL IDE's
+schema explorer shows each user exactly their own slice of the lakehouse.
+
+::: tip Keycloak role → Trino group
+The realm roles (`data-admin`, `data-engineer`, `data-scientist`) decide the
+Control Panel UI; the same names as Trino groups decide what Trino itself
+allows. Keep a user's Keycloak role and group membership in sync.
+:::
 
 ## The `iceberg` catalog
 
@@ -73,10 +153,16 @@ SELECT parse_datetime(event_ts, 'yyyy-MM-dd HH:mm:ss.SSS') FROM kafka.aetherlake
 |---------|---------|-------------|
 | `trino.enabled` | `true` | Toggle Trino |
 | `trino.server.workers` | `2` | Number of worker pods |
+| `trino.server.config.authenticationType` | `PASSWORD,JWT` | HTTP authentication types (see above) |
 | `trino.additionalCatalogs.iceberg` | *(see above)* | Iceberg/Polaris catalog |
 | `trino.additionalCatalogs.kafka` | *(see above)* | Kafka connector catalog |
 | `trino.kafka.tableDescriptions` | `events.json` | Per-topic JSON schemas for the kafka catalog |
-| `trino.additionalConfigProperties` | `["http-server.process-forwarded=true"]` | Accept ingress `X-Forwarded-*` headers (see below) |
+| `trino.accessControl` | file rules | Role-based catalog/schema/query rules (`rules.json`, 10s refresh) |
+| `trino.auth.passwordAuth` / `trino.auth.groups` | *(install.sh)* | `password.db` / `group.db`, injected at install time |
+| `trino.configMounts[trino-jwt-key]` | *(install.sh ConfigMap)* | Realm RSA public key for JWT verification |
+| `trino.server.config.https` | `enabled: true`, port `8443` | HTTPS listener; keystore from the `trino-tls` secret |
+| `trino.secretMounts[trino-tls]` | cert-manager secret | TLS certificate + PKCS12 keystore |
+| `trino.additionalConfigProperties` | `process-forwarded` | Node-wide `config.properties` lines; coordinator-only ones (web-ui, JWT, keystore key, shared secret) are rendered by `install.sh` |
 | `trino.env[MINIO_ACCESS_KEY]` | secret `minio-root-user` | S3 access key |
 | `trino.env[MINIO_SECRET_KEY]` | secret `minio-root-password` | S3 secret key |
 | `trino.env[POLARIS_CREDENTIAL]` | secret `polaris-credential` | Polaris OAuth2 `id:secret` |
@@ -101,12 +187,23 @@ remain as a fallback for non-vended catalog operations). See
 ## Try it
 
 ```bash
-POD=$(kubectl get pod -n aetherlake -o name | grep trino-coordinator | head -1)
-trino() { kubectl exec -n aetherlake $POD -- trino --server localhost:8080 --catalog iceberg --execute "$1"; }
+# Trust material + tunnel to the HTTPS listener
+kubectl get secret aetherlake-root-ca -n cert-manager \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/aetherlake-ca.crt
+kubectl port-forward -n aetherlake svc/core-data-stack-trino 8443:8443 &
 
-trino "SHOW CATALOGS"
-trino "CREATE SCHEMA IF NOT EXISTS iceberg.demo"
-trino "CREATE TABLE iceberg.demo.t (id int, name varchar)"
-trino "INSERT INTO iceberg.demo.t VALUES (1,'hello'),(2,'lakehouse')"
-trino "SELECT * FROM iceberg.demo.t ORDER BY id"
+PASS=$(kubectl get secret aetherlake-credentials -n aetherlake \
+  -o jsonpath='{.data.trino-mcp-password}' | base64 -d)
+
+# Authenticated query (mcp service user, read-only):
+curl -s --cacert /tmp/aetherlake-ca.crt -u "mcp:$PASS" \
+  -X POST https://localhost:8443/v1/statement -d 'SHOW CATALOGS'
+
+# Unauthenticated requests are rejected (expect a 401):
+curl -s --cacert /tmp/aetherlake-ca.crt -o /dev/null -w '%{http_code}\n' \
+  -X POST https://localhost:8443/v1/statement -d 'SHOW CATALOGS'
 ```
+
+For multi-statement exploration (CREATE TABLE, INSERT, SELECT) use the
+[Control Panel SQL IDE](../control-panel#sql-ide) — it forwards your own
+Keycloak identity, so what you see there is exactly your permission slice.

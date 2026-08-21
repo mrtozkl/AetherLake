@@ -20,6 +20,8 @@ models:
     silver:
       +materialized: table
       +schema: silver
+      +tags: ["silver", "curated"]
     gold:
       +materialized: table
       +schema: gold
+      +tags: ["gold", "analytics", "marts"]

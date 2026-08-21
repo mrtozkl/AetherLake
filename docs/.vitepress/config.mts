@@ -40,6 +40,7 @@ export default withMermaid(defineConfig({
           { text: 'Apache Spark — Processing', link: '/guide/components/spark' },
           { text: 'Apache Kafka — Streaming', link: '/guide/components/kafka' },
           { text: 'Apache Flink — Stream Processing', link: '/guide/components/flink' },
+          { text: 'dbt — Data Transformations', link: '/guide/components/dbt' },
           { text: 'PostgreSQL — Datastores', link: '/guide/components/postgres' },
         ]
       },

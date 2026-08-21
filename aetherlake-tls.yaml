@@ -42,3 +42,43 @@ metadata:
 spec:
   ca:
     secretName: aetherlake-root-ca
+---
+# Service certificate for the Trino coordinator's HTTPS listener (port 8443).
+# cert-manager also renders a PKCS12 keystore (keystore.p12) into the same
+# secret — airlift's HTTPS server needs a keystore, not raw PEM. The keystore
+# password lives in aetherlake-credentials (trino-keystore-password), created
+# by install.sh before this file is applied. localhost/127.0.0.1 are covered
+# so `kubectl port-forward` to the HTTPS port verifies cleanly from a dev
+# machine (with NODE_EXTRA_CA_CERTS pointing at the root CA).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: trino-tls
+  namespace: aetherlake
+spec:
+  secretName: trino-tls
+  commonName: core-data-stack-trino
+  dnsNames:
+    - core-data-stack-trino
+    - core-data-stack-trino.aetherlake
+    - core-data-stack-trino.aetherlake.svc
+    - core-data-stack-trino.aetherlake.svc.cluster.local
+    - trino.aetherlake.local
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
+  duration: 2160h # 90 days
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  keystores:
+    pkcs12:
+      create: true
+      passwordSecretRef:
+        name: aetherlake-credentials
+        key: trino-keystore-password
+  issuerRef:
+    name: aetherlake-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

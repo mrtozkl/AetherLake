@@ -3,515 +3,308 @@
   <img src="https://img.shields.io/badge/Helm-0F1689?style=for-the-badge&logo=helm&logoColor=white" alt="Helm" />
   <img src="https://img.shields.io/badge/Apache%20Iceberg-4E8EE9?style=for-the-badge" alt="Iceberg" />
   <img src="https://img.shields.io/badge/Trino-DD00A1?style=for-the-badge&logo=trino&logoColor=white" alt="Trino" />
-  <img src="https://img.shields.io/badge/MinIO-C72E49?style=for-the-badge&logo=minio&logoColor=white" alt="MinIO" />
+  <img src="https://img.shields.io/badge/Apache%20Kafka-231F20?style=for-the-badge&logo=apachekafka&logoColor=white" alt="Kafka" />
+  <img src="https://img.shields.io/badge/Apache%20Flink-E6526F?style=for-the-badge&logo=apacheflink&logoColor=white" alt="Flink" />
+  <img src="https://img.shields.io/badge/dbt-FF694B?style=for-the-badge&logo=dbt&logoColor=white" alt="dbt" />
   <img src="https://img.shields.io/badge/License-BUSL%201.1-blue?style=for-the-badge" alt="License" />
 </p>
 
-<h1 align="center">⚡ AetherLake: Open-Source Data Lakehouse on Kubernetes</h1>
+<h1 align="center">🌊 AetherLake — Open-Source Data Lakehouse on Kubernetes</h1>
 
 <p align="center">
-  # 🌊 AetherLake
-
-  ![AetherLake Dashboard](assets/dashboard.png)
-
-  AetherLake is a Kubernetes-native open-source Data Lakehouse platform. It orchestrates storage, query, vector search, and AI orchestration engines to build a unified modern data stack. with a single <code>helm install</code>.
+  <img src="assets/dashboard.png" alt="AetherLake Dashboard" />
 </p>
 
 <p align="center">
-  <a href="#-quick-start">Quick Start</a> ·
-  <a href="#-architecture">Architecture</a> ·
-  <a href="#-components">Components</a> ·
-  <a href="#-control-panel">Control Panel</a> ·
-  <a href="#-configuration">Configuration</a> ·
-  <a href="#-contributing">Contributing</a>
+  Storage, catalog, query, streaming, BI and identity — one <code>helm install</code>.<br/>
+  <a href="#-quick-start">Quick Start</a> · <a href="#-components">Components</a> · <a href="#-streaming-kafka--flink">Streaming</a> · <a href="#-dbt-lakehouse-transformations">dbt</a> · <a href="#-single-sign-on">SSO</a> · <a href="#-configuration">Configuration</a>
 </p>
 
 ---
 
 ## ✨ What is AetherLake?
 
-AetherLake is a **batteries-included, Kubernetes-native Data Lakehouse** that brings together best-in-class open-source tools into a single, cohesive platform. Instead of spending weeks gluing together storage, compute, catalog, orchestration, and security layers — deploy everything in minutes.
+A batteries-included, Kubernetes-native data lakehouse that glues best-in-class
+open-source components into one platform: S3 storage, an Iceberg REST catalog,
+federated SQL, stream processing, orchestration, BI and centralized identity —
+managed from a single web Control Panel.
 
-**Key principles:**
-
-- 🏗️ **Modular** — Enable or disable any component via a single toggle
-- 🔐 **Secure by default** — Centralized SSO with Keycloak, RBAC across all services
-- 📦 **Cloud-native** — Helm charts, Kubernetes operators, and S3-compatible storage
-- 🎛️ **Unified control** — Web-based Control Panel to manage the entire platform
-- 🌐 **Multi-language** — Control Panel supports English and Turkish (extensible)
+- 🏗️ **Modular** — every component behind a single `values.yaml` toggle
+- 🔐 **Secure by default** — Keycloak SSO for every UI, random per-install secrets
+- 🌊 **Streaming** — Kafka (Strimzi) + Flink SQL jobs, queryable from Trino
+- 🔄 **dbt Lakehouse** — Medallion modeling (Bronze → Silver → Gold) with visual DAG Lineage
+- 🎛️ **Unified control** — Next.js Control Panel (EN/TR) for status, SQL, catalogs, Kafka, Flink, and dbt
 
 ---
 
 ## 🏛️ Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                      aetherlake namespace                            │
-│                                                                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌────────────┐ │
-│  │   MinIO      │  │   Trino     │  │  Polaris    │  │  Milvus    │ │
-│  │  (Storage)   │  │  (SQL)      │  │ (Catalog)   │  │ (Vector)   │ │
-│  │  S3-compat   │  │  Federated  │  │  Iceberg    │  │  AI/ML     │ │
-│  │  Object      │  │  Query      │  │  REST       │  │  Similarity│ │
-│  └──────┬───────┘  └──────┬──────┘  └──────┬──────┘  └─────┬──────┘ │
-│         │                 │                │               │        │
-│         └─────────────────┼────────────────┘               │        │
-│                           │                                │        │
-│  ┌────────────────────────┼────────────────────────────────┘        │
-│  │                        │                                         │
-│  │  ┌─────────────┐  ┌───┴─────────┐  ┌──────────────┐            │
-│  │  │  Airflow     │  │  Spark      │  │  Superset    │            │
-│  │  │ (Orchestr.)  │  │ (Process.)  │  │  (BI / dbt)  │            │
-│  │  └──────────────┘  └─────────────┘  └──────────────┘            │
-│  │  ┌─────────────┐  ┌─────────────┐                               │
-│  │  │   Kafka      │◄─┤   Flink     │                               │
-│  │  │ (Streaming,  │  │ (SQL Jobs,  │                               │
-│  │  │  Strimzi)    │  │  Operator)  │                               │
-│  │  └─────────────┘  └─────────────┘                               │
-│  │   Airflow/Superset/Polaris → shared aetherlake-postgres          │
-│  │   Keycloak → its own keycloak-postgres (isolated)               │
-│  │                                                                  │
-│  │  ┌───────────────────────────────────────────────────┐          │
-│  │  │              Control Panel (Next.js)               │          │
-│  │  │ Status · Observability · Catalogs · SQL IDE · i18n │          │
-│  │  └───────────────────────────────────────────────────┘          │
-│  │                                                                  │
-│  │  ┌───────────────────────────────────────────────────┐          │
-│  │  │              Keycloak (Identity & SSO)             │          │
-│  │  │  OIDC · RBAC · Realm: aetherlake · Multi-client   │          │
-│  │  └───────────────────────────────────────────────────┘          │
-│  │                                                                  │
-│  └─────────────── Nginx Ingress Controller ─────────────────────── │
-│                                                                      │
-│  DNS: *.aetherlake.local                                            │
-│  minio | trino | polaris | keycloak | airflow | superset | milvus   │
-└──────────────────────────────────────────────────────────────────────┘
+                        *.aetherlake.local (nginx ingress)
+                        │  oauth2-proxy gate (Keycloak SSO)
+                        │  for UIs without native OIDC
+   ┌────────────────────┼───────────────────────────────────────┐
+   │  aetherlake ns     ▼                                       │
+   │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐ │
+   │  │ MinIO    │ │ Trino    │ │ Polaris  │ │ Control Panel │ │
+   │  │ storage  │◄ SQL +    │ │ Iceberg  │ │ Next.js (SSO) │ │ │
+   │  │          │ │ kafka cat│ │ REST cat │ └───────────────┘ │ │
+   │  └──────────┘ └────▲─────┘ └──────────                   │ │
+   │                    │ queries                              │ │
+   │  ┌────────── ┌────┴─────┐ ┌──────────┐ ┌───────────────┐ │ │
+   │  │ Kafka    │◄ Flink    │ │ Airflow  │ │ Superset (SSO)│ │ │
+   │  │ Strimzi  │ │ SQL jobs │ │ (SSO)    │ │ Milvus/Attu   │ │ │
+   │  │ +external│ └────────── └──────────┘ └───────────────┘ │ │
+   │  │ SCRAM    │                                             │ │
+   │  └──────────┘ ┌─────────────────────────────────────────┐ │ │
+   │               │ Keycloak — realm aetherlake, OIDC SSO   │ │ │
+   │               └─────────────────────────────────────────┘ │ │
+   └────────────────────────────────────────────────────────────┘
 ```
+
+Per-component deep dives (settings, diagrams, operations) live in
+[`docs/guide/components/`](docs/guide/components/).
 
 ---
 
 ## 📦 Components
 
-> Detailed per-component reference (every setting, architecture diagrams,
-> operational notes) lives in the **[documentation site](https://mrtozkl.github.io/AetherLake/)** under *Component Reference*.
-
-| Component | Role | Version | Status |
-|-----------|------|---------|--------|
-| **[Keycloak](https://www.keycloak.org/)** | Identity & SSO (OIDC) | Upstream 26.3.3 | ✅ Stable |
-| **[MinIO](https://min.io/)** | S3-compatible object storage | Operator Tenant (2025-04) | ✅ Stable |
-| **[Trino](https://trino.io/)** | Distributed SQL query engine | 480 (chart 1.42.2) | ✅ Stable |
-| **[Apache Polaris](https://polaris.apache.org/)** | Iceberg REST catalog + vending | Postgres metastore | ✅ Stable |
-| **[Apache Airflow](https://airflow.apache.org/)** | Workflow orchestration | Apache 2.10.5 (chart 1.16.0) | ✅ Stable |
-| **[Apache Superset](https://superset.apache.org/)** | BI & dashboards | 3.1.2 (chart 0.12.8) | ✅ Stable |
-| **[Apache Spark](https://spark.apache.org/)** | Distributed data processing | Operator 1.1.27 | ✅ Stable |
-| **[Apache Kafka](https://kafka.apache.org/)** | Distributed streaming platform | 4.3.0 (Strimzi 1.1.0, KRaft) | ✅ Stable |
-| **[Apache Flink](https://flink.apache.org/)** | Stream processing (Flink SQL jobs) | 2.1 (Operator 1.15.0) | ✅ Stable |
-| **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | ✅ Stable |
-| **[PostgreSQL](https://www.postgresql.org/)** | Metadata datastore (shared + Keycloak) | 16-alpine | ✅ Stable |
-| **[dbt](https://www.getdbt.com/)** | SQL-based data transformation | Project included | ✅ Stable |
-| **Control Panel** | Web UI for platform management | Next.js 16 | ✅ Stable |
+| Component | Role | Version |
+|-----------|------|---------|
+| [Keycloak](https://www.keycloak.org/) | Identity & SSO (OIDC) | 26.3.3 |
+| [MinIO](https://min.io/) | S3-compatible object storage | Operator tenant |
+| [Trino](https://trino.io/) | Federated SQL (Iceberg + Kafka catalogs) | 480 |
+| [Apache Polaris](https://polaris.apache.org/) | Iceberg REST catalog | Postgres metastore |
+| [Apache Kafka](https://kafka.apache.org/) | Streaming (Strimzi, KRaft) | 4.3.0 |
+| [Apache Flink](https://flink.apache.org/) | Stream processing (SQL jobs) | 2.1 / Operator 1.15 |
+| [dbt](https://www.getdbt.com/) | Medallion modeling & Lineage | 1.8 (dbt-trino) |
+| [Apache Airflow](https://airflow.apache.org/) | Orchestration | 2.10.5 |
+| [Apache Superset](https://superset.apache.org/) | BI & dashboards | 3.1.2 |
+| [Apache Spark](https://spark.apache.org/) | Batch processing | Operator 1.1.27 |
+| [Milvus](https://milvus.io/) | Vector search | chart 5.0.14 |
+| PostgreSQL | Metadata stores | 16 |
+| Control Panel | Platform UI (Next.js) | EN/TR |
 
 ---
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- Kubernetes cluster (v1.26+) — local: [Docker Desktop](https://www.docker.com/products/docker-desktop/), [minikube](https://minikube.sigs.k8s.io/), or [kind](https://kind.sigs.k8s.io/)
-- [Helm](https://helm.sh/) v3.12+
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- [Docker](https://www.docker.com/) — `install.sh` builds the Flink SQL runner image locally (skipped with a warning when Docker is missing)
-- NGINX Ingress Controller
-- *(optional)* [metrics-server](https://github.com/kubernetes-sigs/metrics-server) — required for the Control Panel's per-pod CPU/RAM metrics. On Docker Desktop install it with `--kubelet-insecure-tls`.
-
-### 1. Clone the repository
+**Prerequisites:** Kubernetes (Docker Desktop / minikube / kind), Helm ≥ 3.12,
+kubectl, Docker (the installer builds the Flink SQL runner image), an NGINX
+ingress controller (the installer installs one if missing).
 
 ```bash
-git clone https://github.com/mrtozkl/AetherLake.git
-cd AetherLake
-```
-
-### 2. Run the installer
-
-The installation script automates namespace creation, credential generation, and Helm deployments:
-
-```bash
+git clone https://github.com/mrtozkl/AetherLake.git && cd AetherLake
 ./install.sh
 ```
 
-This will deploy Keycloak, MinIO, Trino, Polaris, and all other configured components into your local cluster.
-
-### 6. Configure local DNS
-
-Add the following to your `/etc/hosts` (or use a local DNS resolver):
+Add local DNS entries:
 
 ```
-127.0.0.1  minio.aetherlake.local
-127.0.0.1  trino.aetherlake.local
-127.0.0.1  polaris.aetherlake.local
-127.0.0.1  keycloak.aetherlake.local
-127.0.0.1  airflow.aetherlake.local
-127.0.0.1  milvus.aetherlake.local
-127.0.0.1  superset.aetherlake.local
-127.0.0.1  oauth2.aetherlake.local
+127.0.0.1  minio.aetherlake.local trino.aetherlake.local polaris.aetherlake.local
+127.0.0.1  keycloak.aetherlake.local airflow.aetherlake.local superset.aetherlake.local
+127.0.0.1  milvus.aetherlake.local oauth2.aetherlake.local
 ```
 
-### 7. Access the platform
+| Service | URL | Auth |
+|---------|-----|------|
+| Control Panel | `http://localhost:3000` | dev login `admin`/`admin` (local dev only) |
+| Trino UI | `http://trino.aetherlake.local` | Keycloak SSO |
+| Milvus (Attu) | `http://milvus.aetherlake.local` | Keycloak SSO |
+| MinIO Console | `http://minio.aetherlake.local` | Keycloak OIDC |
+| Airflow | `http://airflow.aetherlake.local` | Keycloak OIDC |
+| Superset | `http://superset.aetherlake.local` | Keycloak OIDC |
+| Keycloak | `http://keycloak.aetherlake.local` | admin (secret) |
 
-| Service | URL |
-|---------|-----|
-| Control Panel | `http://localhost:3000` |
-| MinIO Console | `http://minio.aetherlake.local` |
-| Trino | `http://trino.aetherlake.local` (Keycloak SSO) |
-| Polaris | `http://polaris.aetherlake.local` |
-| Keycloak | `http://keycloak.aetherlake.local` |
-| Airflow | `http://airflow.aetherlake.local` |
-| Superset | `http://superset.aetherlake.local` |
-| Milvus (Attu) | `http://milvus.aetherlake.local` (Keycloak SSO) |
-
-**Control Panel (local dev login):** `admin` / `admin` — this username/password
-provider is only enabled when the Control Panel runs outside production
-(`NODE_ENV !== "production"`); deployments use Keycloak SSO.
-
-**Keycloak admin & service credentials** are randomly generated by `install.sh`.
-Retrieve them from the cluster secret, e.g. the Keycloak admin password:
+All credentials are randomly generated into `aetherlake-credentials`:
 
 ```bash
 kubectl get secret aetherlake-credentials -n aetherlake \
-  -o jsonpath='{.data.keycloak-admin-password}' | base64 -d
+  -o jsonpath='{.data.realm-admin-password}' | base64 -d   # SSO admin (change on first login)
 ```
 
-Other generated credentials in the same secret: `realm-admin-password` (SSO
-`admin` user — password change forced on first login), `superset-admin-password`,
-and `trino-ingress-password` (basic-auth gate in front of the Trino ingress,
-username `trino`; Trino itself trusts the `X-Trino-User` header, so its route
-must never be reachable anonymously).
-
-**HTTPS:** every `*.aetherlake.local` host is also served over TLS, signed by a
-self-signed CA that `install.sh` provisions via cert-manager. Plain HTTP stays
-enabled because the SSO issuer URLs are `http://`. To trust the CA locally:
-
-```bash
-kubectl get secret aetherlake-root-ca -n cert-manager \
-  -o jsonpath='{.data.ca\.crt}' | base64 -d > aetherlake-ca.crt
-# macOS
-sudo security add-trusted-cert -d -r trustRoot \
-  -k /Library/Keychains/System.keychain aetherlake-ca.crt
-```
-
-**MinIO SSO access** is attribute-based: a Keycloak user only gets MinIO access
-if their `minio_policy` attribute names a MinIO policy (e.g. `consoleAdmin`,
-`readonly`, `readwrite`). Users without the attribute are denied — the realm's
-`admin` user ships with `consoleAdmin`.
+Every host is also served over TLS with a self-signed CA (cert-manager);
+plain HTTP stays on because the SSO issuer URLs are `http://`.
 
 ---
 
 ## 🎛️ Control Panel
 
-![Dashboard Screenshot](assets/dashboard.png)
+A unified web console built with Next.js 16 (Turbopack, TypeScript, Tailwind CSS) providing centralized platform visibility and operations:
 
-The Control Panel is a **Next.js 16** web application that serves as the unified management interface for the entire platform.
+<p align="center">
+  <img src="assets/dashboard.png" alt="Overview Dashboard" width="49%" />
+  <img src="assets/dbt.png" alt="dbt Lakehouse Workspace" width="49%" />
+</p>
+<p align="center">
+  <img src="assets/flink.png" alt="Flink SQL Workspace" width="49%" />
+  <img src="assets/kafka.png" alt="Kafka Management" width="49%" />
+</p>
 
-### Features
-
-- **Platform Overview** — Real-time pod status monitoring with auto-refresh
-- **Observability** — Pod log viewer (live tail), Kubernetes events, and per-pod CPU/RAM metrics
-- **Iceberg Tables** — Browse Polaris namespaces, table schemas, partitions, and snapshot history
-- **Trino Management** — Create, delete, and configure SQL catalogs (Iceberg, Hive, PostgreSQL, MySQL)
-- **Polaris Management** — Manage Iceberg REST catalogs and namespaces
-- **Flink SQL Jobs** — Write Flink SQL in a Monaco editor, submit jobs to the Flink Kubernetes Operator, and list/cancel running jobs
-- **SQL IDE** — Browser-based SQL editor with Monaco Editor, schema explorer, and query results
-- **Service Actions** — Restart services directly from the dashboard
-- **SSO Integration** — Keycloak OIDC and credentials-based authentication
-- **Internationalization** — English and Turkish support with runtime switching
-- **Role-Based Access** — Admin-only features (Keycloak management)
-
-### Screenshots
-
-| Observability — live pod logs | Observability — metrics & details |
-|---|---|
-| ![Observability logs](assets/observability.png) | ![Observability details](assets/observability-details.png) |
-
-| Unified SQL IDE | Trino catalogs |
-|---|---|
-| ![SQL IDE](assets/ide.png) | ![Trino catalogs](assets/trino.png) |
-
-| Apache Polaris catalogs | Iceberg table explorer |
-|---|---|
-| ![Apache Polaris catalogs](assets/polaris.png) | ![Iceberg tables](assets/tables.png) |
-
-### Running locally
+- **Overview** — pod health, restarts, memory/CPU usage, and one-click service restarts
+- **dbt Workspace & Lineage** — interactive DAG graph (Bronze → Silver → Gold), model inspector, Monaco SQL viewer, and run triggers
+- **Kafka** — KRaft cluster status, broker readiness, topics (partitions, replicas, configs, and conditions)
+- **Flink SQL** — interactive streaming workspace: topic explorer, Monaco SQL editor, job submission, and live status
+- **SQL IDE** — federated Trino queries with schema tree explorer across Iceberg and Kafka catalogs
+- **Iceberg Tables & Catalogs** — explore Polaris namespaces, table schemas, snapshots, and partition metadata
+- **Observability** — live container logs, Kubernetes events, and detailed pod metrics
+- **i18n & RBAC** — bilingual (English/Turkish) with role-based action gating (`data-admin`, `data-scientist`, `data-engineer`)
 
 ```bash
-cd control-panel
-npm install
-npm run dev
-# → http://localhost:3000
-```
-
-### Docker build
-
-```bash
-cd control-panel
-docker build -t aetherlake-control-panel .
-docker run -p 3000:3000 aetherlake-control-panel
+cd control-panel && npm install && npm run dev   # → http://localhost:3000
 ```
 
 ---
 
-## 🤖 MCP Server (For AI Assistants)
+## 🔄 dbt Lakehouse Transformations
 
-AetherLake includes a built-in **Model Context Protocol (MCP)** server, allowing AI assistants like Claude, Cursor, or Windsurf to directly interact with your data platform.
+Transform raw data using the Medallion Architecture (`pipelines/dbt/`):
 
-### Supported Tools
+- **Bronze (Raw):** Clickstream (`user_events`) and sensor data (`telemetry_stream`) landed via Kafka and Flink.
+- **Silver (Curated):** Cleansed and partitioned Parquet Iceberg tables (`stg_user_events`, `stg_users`).
+- **Gold (Marts):** Aggregated metrics and dimensional marts (`fct_daily_user_metrics`, `fct_event_summary`) consumed by Superset and Trino.
 
-- `get_platform_status`: Check the health of all AetherLake components.
-- `get_service_logs`: Fetch real-time logs from any service (e.g., Trino, Airflow).
-- `restart_service`: Safely restart a specific component.
-- `query_trino`: Execute SQL queries against your Data Lakehouse.
-- `list_catalogs`: View Iceberg catalogs via Apache Polaris.
-- `list_airflow_dags` / `trigger_airflow_dag`: Manage your data pipelines.
-
-### Configuring Claude Desktop
-
-Add the following to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "aetherlake": {
-      "command": "node",
-      "args": ["/path/to/AetherLake/mcp-server/dist/index.js"],
-      "env": {
-        "AETHERLAKE_NAMESPACE": "aetherlake",
-        "TRINO_URL": "http://trino.aetherlake.local",
-        "POLARIS_URL": "http://polaris.aetherlake.local",
-        "AIRFLOW_URL": "http://airflow.aetherlake.local",
-        "AIRFLOW_AUTH": "admin:your-airflow-password"
-      }
-    }
-  }
-}
+```bash
+cd pipelines/dbt
+dbt run --profiles-dir .
+dbt test --profiles-dir .
 ```
 
-> ⚠️ `AIRFLOW_AUTH` (format `user:password`) defaults to `admin:admin` for local
-> development. Set it to real credentials before pointing the MCP server at any
-> non-local deployment.
+---
 
-Make sure to run `npm install` and `npm run build` in the `mcp-server` directory first.
+## 🌊 Streaming: Kafka + Flink
+
+Enable with `kafka.enabled` / `flink.enabled` (both default `true`).
+
+- **Kafka (KRaft Mode):** Provisioned by Strimzi 1.1.0 with a pre-configured `events` topic; Flink SQL jobs produce/consume topics via the built-in Kafka connector (`pipelines/flink/examples/`).
+- **Flink SQL Runner:** Each submission creates an isolated application-mode `FlinkDeployment` mini-cluster using `aetherlake/flink-sql-runner:flink-2.1` built by `install.sh`.
+- **Kafka → Iceberg Lakehouse Bridge:** Continuous streaming ETL from Kafka topics directly into Apache Iceberg tables via Polaris REST catalog and MinIO S3FileIO (`pipelines/flink/examples/kafka-to-iceberg.sql`). Platform credentials (`POLARIS_CREDENTIAL`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`) are dynamically injected and resolved via `${ENV:...}` placeholders.
+- **Kafka in Trino:** Topics queryable directly as SQL tables via `SELECT * FROM kafka.aetherlake.events` (configured in `trino.kafka.tableDescriptions`).
+
+### Producing from outside the cluster
+
+The `external` listener (TLS + SCRAM-SHA-512, nodeport) accepts authenticated
+clients; credentials live in the `external-producer` KafkaUser secret:
+
+```bash
+NODEPORT=$(kubectl get svc aetherlake-kafka-external-bootstrap -n aetherlake \
+  -o jsonpath='{.spec.ports[0].nodePort}')
+kubectl get secret aetherlake-cluster-ca-cert -n aetherlake \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d > cluster-ca.crt      # TLS truststore
+kubectl get secret external-producer -n aetherlake \
+  -o jsonpath='{.data.sasl\.jaas\.config}' | base64 -d            # sasl.jaas.config value
+```
+
+Client properties (`localhost:$NODEPORT` on Docker Desktop):
+
+```properties
+security.protocol=SASL_SSL
+sasl.mechanism=SCRAM-SHA-512
+sasl.jaas.config=<value from the secret>
+ssl.truststore.location=<truststore built from cluster-ca.crt>
+ssl.truststore.password=<truststore password>
+```
+
+Full recipe (truststore build, console producer/consumer examples):
+[docs/guide/components/kafka.md](docs/guide/components/kafka.md#producing-from-outside-the-cluster).
+
+---
+
+## 🔐 Single Sign-On
+
+Keycloak realm `aetherlake` with OIDC clients per service. Apps with native
+OIDC (Superset, Airflow, MinIO) log in directly; UIs without one (Trino,
+Milvus/Attu) are gated by **oauth2-proxy** through nginx external auth — one
+Keycloak login, shared `*.aetherlake.local` session.
+
+| Client | Used by |
+|--------|---------|
+| `aetherlake-client` | Control Panel (NextAuth) |
+| `oauth2-proxy` | SSO gate for Trino UI & Milvus Attu |
+| `superset` / `airflow` / `minio` | native OIDC apps |
+| `polaris` | catalog token issuance |
+
+Realm roles: `data-admin`, `data-scientist`, `data-engineer`.
+
+---
+
+## ⚙️ Configuration
+
+Component toggles in `helm-charts/core-data-stack/values.yaml`:
+
+```yaml
+kafka:
+  enabled: true
+  external:            # authenticated (SCRAM) access from outside the cluster
+    enabled: true
+flink:
+  enabled: true
+trino:
+  enabled: true
+  server:
+    workers: 2
+airflow:
+  enabled: false       # disable anything you don't need
+```
+
+Secrets: everything reads from `aetherlake-credentials` /
+`open-lake-credentials` (random per install; re-runs backfill missing keys).
+Storage: MinIO tenant (`minio.*`: servers, volumes, `initBuckets`).
+
+---
+
+## 🤖 MCP Server
+
+AI assistants (Claude, Cursor, …) can operate the platform via
+[`mcp-server/`](mcp-server/): platform status, service logs/restarts, Trino
+queries, Polaris catalogs, Airflow DAGs. Build with
+`npm install && npm run build`, then point your MCP client at
+`mcp-server/dist/index.js` (see `mcp-server/README.md` for the config block).
 
 ---
 
 ## 📁 Project Structure
 
 ```
-AetherLake/
-├── control-panel/              # Next.js Control Panel web application
-│   ├── src/app/
-│   │   ├── page.tsx            # Platform overview (home)
-│   │   ├── trino/              # Trino catalog management
-│   │   ├── polaris/            # Polaris catalog management
-│   │   ├── flink/              # Flink SQL job submission & listing
-│   │   ├── query/              # SQL IDE with Monaco Editor
-│   │   ├── api/                # Backend API routes (K8s, Trino, Polaris, Flink)
-│   │   ├── components/         # Shared UI components (Sidebar)
-│   │   ├── i18n.ts             # Translation strings (EN/TR)
-│   │   └── locale-provider.tsx # React context for i18n
-│   └── Dockerfile
-│
+├── control-panel/        # Next.js UI (overview, kafka, flink, sql ide, …)
 ├── helm-charts/
-│   ├── core-data-stack/        # Main data infrastructure chart
-│   │   ├── Chart.yaml          # Dependencies: Trino, Spark, Polaris, Airflow, Milvus, Kafka (Strimzi), Flink
-│   │   ├── values.yaml         # Default configuration
-│   │   ├── charts/polaris/     # Custom Apache Polaris subchart
-│   │   └── templates/          # MinIO Tenant CRD, Kafka cluster CRs, init jobs
-│   │
-│   └── security-stack/         # Identity & access management chart
-│       ├── Chart.yaml          # Dependency: Keycloak
-│       └── values.yaml         # Realm config, OIDC clients, RBAC roles
-│
-├── pipelines/                  # Data pipeline examples
-│   ├── airflow/dags/           # Airflow DAG definitions
-│   ├── spark/ingest.py         # PySpark ingestion job
-│   ├── flink/                  # Flink SQL runner image + example SQL jobs
-│   └── dbt/                    # dbt project (models, profiles)
-│
-├── aetherlake-ingress.yaml     # NGINX Ingress rules for all services
-└── README.md
+│   ├── core-data-stack/  # data infra chart (+ vendored subcharts)
+│   └── security-stack/   # Keycloak + realm/OIDC provisioning
+├── mcp-server/           # MCP tools for AI assistants
+├── pipelines/            # airflow dags, spark, flink sql-runner + examples, dbt
+├── docs/                 # component reference & guides
+├── aetherlake-ingress.yaml
+└── install.sh
 ```
-
----
-
-## ⚙️ Configuration
-
-### Component toggles
-
-Each component can be individually enabled or disabled in `values.yaml`:
-
-```yaml
-minio:
-  enabled: true
-
-trino:
-  enabled: true
-  server:
-    workers: 2      # Scale Trino workers
-
-polaris:
-  enabled: true
-
-spark-operator:
-  enabled: true
-
-airflow:
-  enabled: false    # Disable if not needed
-
-kafka:
-  enabled: true     # Strimzi operator + KRaft cluster
-
-flink:
-  enabled: true     # Flink Kubernetes Operator (SQL jobs from the Control Panel)
-
-milvus:
-  enabled: true
-
-keycloak:
-  enabled: true
-```
-
-### Secrets management
-
-All credentials are managed through a single Kubernetes Secret (`aetherlake-credentials`), referenced by all components:
-
-```yaml
-global:
-  existingSecret: "aetherlake-credentials"
-```
-
-The Control Panel can dynamically provision and rotate secrets via the Kubernetes API.
-
-### Storage configuration
-
-MinIO is deployed as an AIStor Tenant via the MinIO Operator:
-
-```yaml
-minio:
-  servers: 1
-  volumesPerServer: 1
-  storageSize: "20Gi"
-  storageClassName: "hostpath"
-  initBuckets:
-    - "lakehouse"
-    - "milvus-vectors"
-```
-
-### SSO / OIDC
-
-Keycloak is pre-configured with the `aetherlake` realm and OIDC clients for all services:
-
-| Client | Service |
-|--------|---------|
-| `aetherlake-client` | Control Panel |
-| `trino` | Trino SQL Engine |
-| `airflow` | Apache Airflow |
-| `polaris` | Apache Polaris |
-| `minio` | MinIO Console |
-
-RBAC roles: `data-admin`, `data-scientist`, `data-engineer`
-
----
-
-## 🔧 Data Pipelines
-
-### Spark
-
-Submit PySpark jobs via the Spark Operator:
-
-```bash
-kubectl apply -f pipelines/spark/ingest.py
-```
-
-### Flink SQL
-
-Submit Flink SQL jobs from the Control Panel (**Apache Flink → Submit Job**) —
-each job runs as a dedicated application-mode cluster managed by the Flink
-Kubernetes Operator. Example scripts (datagen → Kafka, Kafka → print) live in
-`pipelines/flink/examples/`, and the SQL runner image is built by `install.sh`
-from `pipelines/flink/sql-runner`.
-
-### dbt
-
-Run transformations against Trino:
-
-```bash
-cd pipelines/dbt
-dbt run --profiles-dir .
-```
-
-### Airflow
-
-DAGs are located in `pipelines/airflow/dags/` and synced to Airflow via Git or ConfigMap.
 
 ---
 
 ## 🗺️ Roadmap
 
-- [ ] Terraform / Pulumi IaC modules for cloud deployment
-- [ ] Grafana + Prometheus observability stack
-- [ ] Apache Ranger for fine-grained data access policies
-- [ ] Data catalog UI with lineage visualization
-- [ ] Multi-cluster federation
-- [ ] GitOps deployment with ArgoCD
-- [ ] Automated backup and disaster recovery
-- [ ] Helm chart published to artifact registry
+- [ ] Terraform / Pulumi modules · Grafana + Prometheus stack
+- [ ] Apache Ranger policies · lineage UI · multi-cluster federation
+- [ ] GitOps (ArgoCD) · automated backups · chart on an artifact registry
 
 ---
 
 ## 🚨 Security & Production Readiness
 
-AetherLake is designed to be easy to run locally. `install.sh` now generates the
-cluster credentials (`aetherlake-credentials` / `open-lake-credentials`) with
-**random per-install values**, and the Control Panel **refuses to start in
-production without `NEXTAUTH_SECRET` and `KEYCLOAK_CLIENT_SECRET`** set. Some
-chart `values.yaml` files still carry placeholder defaults, so review them before
-exposing a cluster.
-
-> [!WARNING]
-> Before exposing your AetherLake cluster to a public or production environment, you **MUST**:
-> 1. Review remaining placeholder secrets in the chart `values.yaml` files and override any that still reference dummy values. (`helm-charts/security-stack/secrets.yaml` ships only `CHANGE_ME` placeholders and is not used by the default install path.)
-> 2. Set `NEXTAUTH_SECRET` and `KEYCLOAK_CLIENT_SECRET` as environment variables for the Control Panel — in production these have no fallback and the app will fail to start without them.
-> 3. Override `AIRFLOW_AUTH` for the MCP server (defaults to `admin:admin`).
-> 4. Use proper TLS certificates on the NGINX Ingress Controller.
+Credentials are random per install and the Control Panel refuses to start in
+production without `NEXTAUTH_SECRET` / `KEYCLOAK_CLIENT_SECRET`. Before
+exposing a cluster: review placeholder values in chart `values.yaml`, set the
+Control Panel env vars, override the MCP server's `AIRFLOW_AUTH`, and use real
+TLS certificates on the ingress.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Whether it's a bug fix, new feature, or documentation improvement.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-Please make sure your changes:
-- Pass `helm lint` for chart changes
-- Pass `npm run build` for Control Panel changes
-- Include appropriate documentation updates
-
----
+Fork → branch → commit → PR. Chart changes must pass `helm lint`; Control
+Panel changes must pass `npm run build`; update docs with your change.
 
 ## 📄 License
 
-This project is licensed under the **Business Source License 1.1 (BUSL-1.1)** — see the [LICENSE](LICENSE) file for details.
-
-In short: the source is freely available, and you can use, modify, and self-host AetherLake at no cost for internal, evaluation, or non-commercial purposes. If you want to monetize it — offer it as a hosted/managed service, embed it in a paid product, or sell services built around it — you need a commercial license, which may include revenue-sharing terms. Reach out to murat.ozkl@gmail.com to discuss. Each release automatically converts to the permissive **Apache License 2.0** four years after publication.
-
-AetherLake also deploys third-party open-source components (Trino, Apache Polaris, Airflow, Superset, Spark, Kafka, Flink, Milvus, Keycloak, PostgreSQL, Redis, MinIO), each under its own license — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for details, in particular a note on MinIO's AGPLv3 licensing.
-
----
-
-<p align="center">
-  <sub>Built with ❤️ for the open-source data community</sub>
-</p>
+**BUSL-1.1** — free to use, modify and self-host internally; commercial
+hosted/managed offerings require a license (see [LICENSE](LICENSE)). Converts
+to Apache-2.0 four years after each release. Third-party components keep their
+own licenses — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

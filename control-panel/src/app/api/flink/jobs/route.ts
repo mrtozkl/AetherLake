@@ -207,7 +207,12 @@ export async function POST(req: NextRequest) {
                             resource: { memory: TASK_MANAGER_MEMORY, cpu: 1 },
                         },
                         // Mount the SQL script into the job pods; the runner
-                        // reads it from the path passed in job.args.
+                        // reads it from the path passed in job.args. Platform
+                        // credentials are injected as env vars so SQL scripts
+                        // can reference them via ${ENV:...} placeholders (the
+                        // runner substitutes before parsing) — e.g. the
+                        // kafka-to-iceberg bridge needs the Polaris credential
+                        // and the warehouse S3 keys.
                         podTemplate: {
                             apiVersion: "v1",
                             kind: "Pod",
@@ -216,6 +221,26 @@ export async function POST(req: NextRequest) {
                                 containers: [
                                     {
                                         name: "flink-main-container",
+                                        env: [
+                                            {
+                                                name: "POLARIS_CREDENTIAL",
+                                                valueFrom: {
+                                                    secretKeyRef: { name: "aetherlake-credentials", key: "polaris-credential" },
+                                                },
+                                            },
+                                            {
+                                                name: "MINIO_ACCESS_KEY",
+                                                valueFrom: {
+                                                    secretKeyRef: { name: "aetherlake-credentials", key: "minio-polaris-access-key" },
+                                                },
+                                            },
+                                            {
+                                                name: "MINIO_SECRET_KEY",
+                                                valueFrom: {
+                                                    secretKeyRef: { name: "aetherlake-credentials", key: "minio-polaris-secret-key" },
+                                                },
+                                            },
+                                        ],
                                         volumeMounts: [
                                             { name: "sql-script", mountPath: "/opt/flink/sql" },
                                         ],

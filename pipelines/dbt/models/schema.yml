@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: stg_user_events
+    description: "Silver layer cleaned and deduplicated user interaction events in Parquet format."
+    columns:
+      - name: user_id
+        description: "Primary user ID from bronze event payload."
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Normalized lowercase event classification."
+        data_tests:
+          - not_null
+      - name: event_timestamp
+        description: "Event occurrence timestamp partitioned by day."
+        data_tests:
+          - not_null
+
+  - name: stg_users
+    description: "Silver layer user profile dimension with activity tier calculation."
+    columns:
+      - name: user_id
+        description: "Unique user identifier."
+        data_tests:
+          - unique
+          - not_null
+      - name: user_tier
+        description: "Activity tier segment (HIGH_ACTIVITY, MEDIUM_ACTIVITY, LOW_ACTIVITY)."
+        data_tests:
+          - accepted_values:
+              values: ['HIGH_ACTIVITY', 'MEDIUM_ACTIVITY', 'LOW_ACTIVITY']
+
+  - name: fct_daily_user_metrics
+    description: "Gold layer daily aggregated metrics per user for BI dashboards."
+    columns:
+      - name: activity_date
+        description: "Partition key representing the metric date."
+        data_tests:
+          - not_null
+      - name: user_id
+        description: "Associated user ID."
+        data_tests:
+          - not_null
+      - name: total_events
+        description: "Total count of events performed by the user on that date."
+
+  - name: fct_event_summary
+    description: "Gold layer joined mart combining user event streams with dimension tiers."
+    columns:
+      - name: user_id
+        description: "User identifier."
+        data_tests:
+          - not_null
+      - name: username
+        description: "Generated synthetic username."
+      - name: user_tier
+        description: "User segment tier."

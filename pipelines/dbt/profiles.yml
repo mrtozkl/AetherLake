@@ -3,10 +3,21 @@ lakehouse_trino:
   outputs:
     dev:
       type: trino
-      method: none
+      # Trino authenticates every caller over TLS: the "ldap" method in
+      # dbt-trino is plain HTTP Basic auth against the PASSWORD (file)
+      # authenticator. Export the dev admin password first:
+      #   export TRINO_DEV_ADMIN_PASSWORD="$(kubectl get secret \
+      #     aetherlake-credentials -n aetherlake \
+      #     -o jsonpath='{.data.trino-dev-admin-password}' | base64 -d)"
+      method: ldap
       user: admin
+      password: "{{ env_var('TRINO_DEV_ADMIN_PASSWORD') }}"
       host: core-data-stack-trino
-      port: 8080
+      port: 8443
+      http_scheme: https
+      # AetherLake root CA (mounted/exported by install.sh); set to false only
+      # for throwaway debugging.
+      verify: /app/configs/trino-ca.pem
       catalog: iceberg
       schema: public
       threads: 4

@@ -52,6 +52,16 @@ public class SqlRunner {
     private static final Pattern SET_STATEMENT_PATTERN =
             Pattern.compile("SET\\s+'(\\S+)'\\s+=\\s+'(.*)';", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * ${ENV:NAME} placeholders are replaced with the value of the NAME
+     * environment variable before parsing. The Control Panel injects platform
+     * credentials (Polaris, MinIO) into the job pods so SQL scripts reference
+     * secrets without embedding them — same syntax Trino uses in catalog
+     * files.
+     */
+    private static final Pattern ENV_PLACEHOLDER_PATTERN =
+            Pattern.compile("\\$\\{ENV:([A-Za-z_][A-Za-z0-9_]*)\\}");
+
     private static final String BEGIN_CERTIFICATE = "-----BEGIN CERTIFICATE-----";
     private static final String END_CERTIFICATE = "-----END CERTIFICATE-----";
     private static final String ESCAPED_BEGIN_CERTIFICATE = "======BEGIN CERTIFICATE=====";
@@ -61,7 +71,7 @@ public class SqlRunner {
         if (args.length != 1) {
             throw new Exception("Exactly one argument is expected.");
         }
-        var script = FileUtils.readFileUtf8(new File(args[0]));
+        var script = substituteEnv(FileUtils.readFileUtf8(new File(args[0])));
         var statements = parseStatements(script);
 
         var tableEnv = TableEnvironment.create(new Configuration());
@@ -81,6 +91,23 @@ public class SqlRunner {
                 tableEnv.executeSql(statement);
             }
         }
+    }
+
+    /** Replaces ${ENV:NAME} placeholders; fails fast on unknown variables. */
+    public static String substituteEnv(String script) {
+        Matcher matcher = ENV_PLACEHOLDER_PATTERN.matcher(script);
+        StringBuilder result = new StringBuilder();
+        while (matcher.find()) {
+            String name = matcher.group(1);
+            String value = System.getenv(name);
+            if (value == null) {
+                throw new IllegalStateException(
+                        "SQL references ${ENV:" + name + "} but the environment variable is not set");
+            }
+            matcher.appendReplacement(result, Matcher.quoteReplacement(value));
+        }
+        matcher.appendTail(result);
+        return result.toString();
     }
 
     public static List<String> parseStatements(String script) {

@@ -24,6 +24,8 @@ node_modules
 mcp-server/dist
 docs/.vitepress/cache
 docs/.vitepress/dist
+target/
+**/target/
 
 # misc
 .DS_Store
@@ -54,3 +56,8 @@ next-env.d.ts
 
 # Packaged local Polaris subchart (rebuilt by helm dependency update)
 helm-charts/core-data-stack/charts/polaris-*.tgz
+
+# Session exports and chat logs
+qwen-code-export-*.md
+*.export.md
+
