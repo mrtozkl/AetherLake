@@ -1,9 +1,11 @@
 const path = require("path");
+const fs = require("fs");
 const DOCS_PUBLIC = path.resolve(__dirname, "../docs/public");
+const ASSETS_DIR = path.resolve(__dirname, "../assets");
 const { chromium } = require(path.resolve(__dirname, "../control-panel/node_modules/playwright"));
 
 async function main() {
-    console.log("📸 Starting screenshot capture...");
+    console.log("📸 Starting comprehensive screenshot capture...");
     const browser = await chromium.launch({
         channel: "chrome",
         headless: true,
@@ -17,7 +19,25 @@ async function main() {
 
     const page = await context.newPage();
 
-    // Mock API routes for Kafka and Flink to render populated, production UI
+    // Mock API routes for fully populated, production UI screenshots
+    await page.route("**/api/status", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                "MinIO Storage": "Healthy",
+                "Trino Analytics": "Healthy",
+                "Apache Airflow": "Healthy",
+                "Apache Superset": "Healthy",
+                "Milvus Vector Search": "Healthy",
+                "Apache Polaris": "Healthy",
+                "Apache Kafka": "Healthy",
+                "Apache Flink": "Healthy",
+                "Keycloak": "Healthy",
+            }),
+        });
+    });
+
     await page.route("**/api/kafka", async (route) => {
         await route.fulfill({
             status: 200,
@@ -125,31 +145,39 @@ async function main() {
         await page.waitForLoadState("networkidle");
     }
 
-    // Capture Kafka and Flink pages
-    console.log("📷 Capturing Kafka Management (/kafka) -> docs/public/kafka.png...");
-    await page.goto("http://localhost:3000/kafka", { waitUntil: "networkidle" });
-    await page.waitForTimeout(2000);
-    await page.screenshot({ path: path.join(DOCS_PUBLIC, "kafka.png"), fullPage: false });
-
-    console.log("📷 Capturing Flink SQL Workspace (/flink) -> docs/public/flink.png...");
-    await page.goto("http://localhost:3000/flink", { waitUntil: "networkidle" });
-    await page.waitForTimeout(1000);
-    // Click Load Kafka Example button so editor is filled with SQL code
-    const loadExampleBtn = page.locator('button:has-text("Load Kafka Example")');
-    if (await loadExampleBtn.isVisible()) {
-        await loadExampleBtn.click();
+    const capturePage = async (routePath, filename, prepareFn) => {
+        console.log(`📷 Capturing ${routePath} -> ${filename}...`);
+        await page.goto(`http://localhost:3000${routePath}`, { waitUntil: "networkidle" });
+        await page.waitForTimeout(1500);
+        if (prepareFn) await prepareFn(page);
         await page.waitForTimeout(1000);
-    }
-    await page.waitForTimeout(1000);
-    await page.screenshot({ path: path.join(DOCS_PUBLIC, "flink.png"), fullPage: false });
+        const docsPath = path.join(DOCS_PUBLIC, filename);
+        const assetsPath = path.join(ASSETS_DIR, filename);
+        await page.screenshot({ path: docsPath, fullPage: false });
+        fs.copyFileSync(docsPath, assetsPath);
+        console.log(`   ✓ Saved to ${docsPath} and ${assetsPath}`);
+    };
 
-    console.log("📷 Capturing dbt Workspace (/dbt) -> docs/public/dbt.png...");
-    await page.goto("http://localhost:3000/dbt", { waitUntil: "networkidle" });
-    await page.waitForTimeout(2000);
-    await page.screenshot({ path: path.join(DOCS_PUBLIC, "dbt.png"), fullPage: false });
+    // 1. Overview Dashboard
+    await capturePage("/", "dashboard.png");
+
+    // 2. Kafka Management
+    await capturePage("/kafka", "kafka.png");
+
+    // 3. Flink SQL Workspace
+    await capturePage("/flink", "flink.png", async (p) => {
+        const loadExampleBtn = p.locator('button:has-text("Load Kafka Example")');
+        if (await loadExampleBtn.isVisible()) {
+            await loadExampleBtn.click();
+            await p.waitForTimeout(1000);
+        }
+    });
+
+    // 4. dbt Lakehouse Workspace
+    await capturePage("/dbt", "dbt.png");
 
     await browser.close();
-    console.log("✨ Screenshots captured successfully!");
+    console.log("✨ All target screenshots updated successfully!");
 }
 
 main().catch((err) => {

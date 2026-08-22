@@ -7,7 +7,7 @@ import Sidebar from "./components/Sidebar";
 import {
     Database, Activity, Archive, Search, Network, Code2,
     ShieldCheck, LogIn, RefreshCw, Key, ExternalLink,
-    ArrowUpRight, Globe, BarChart3, Radio, Waves
+    ArrowUpRight, Globe, BarChart3, Radio, Waves, GitFork
 } from "lucide-react";
 
 const SERVICES = [
@@ -66,13 +66,6 @@ const SERVICES = [
         icon: Waves,
         iconColor: "text-primary",
         url: "/flink",
-    },
-    {
-        nameKey: "ext.queryIde" as const,
-        descKey: "ext.queryIdeDesc" as const,
-        icon: Code2,
-        iconColor: "text-primary",
-        url: "/query",
     },
 ];
 
