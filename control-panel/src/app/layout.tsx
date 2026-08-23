@@ -1,13 +1,5 @@
 import './globals.css';
-import { Inter } from 'next/font/google';
-import clsx from 'clsx';
 import { Providers } from './providers';
-
-const inter = Inter({
-    subsets: ['latin'],
-    variable: '--font-inter',
-    display: 'swap',
-});
 
 export const metadata = {
     title: 'AetherLake — Data Platform Control Panel',
@@ -20,7 +12,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="en" className={clsx(inter.variable, 'dark')}>
+        <html lang="en" className="dark">
             <body className="font-sans text-foreground bg-background min-h-screen antialiased">
                 <Providers>{children}</Providers>
             </body>

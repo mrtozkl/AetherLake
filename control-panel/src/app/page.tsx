@@ -7,7 +7,8 @@ import Sidebar from "./components/Sidebar";
 import {
     Database, Activity, Archive, Search, Network, Code2,
     ShieldCheck, LogIn, RefreshCw, Key, ExternalLink,
-    ArrowUpRight, Globe, BarChart3, Radio, Waves, GitFork
+    ArrowUpRight, Globe, BarChart3, Radio, Waves, GitFork,
+    Cloud, Server, Wifi, Send, CheckCircle2
 } from "lucide-react";
 
 const SERVICES = [
@@ -88,6 +89,15 @@ export default function Home() {
     const [statusLoading, setStatusLoading] = useState(false);
     const [restartingService, setRestartingService] = useState<string | null>(null);
 
+    const [telemetry, setTelemetry] = useState<{
+        enabled: boolean;
+        clusterId: string;
+        cloudProvider: string;
+        lastPingTime: string | null;
+    } | null>(null);
+    const [pingLoading, setPingLoading] = useState(false);
+    const [pingSuccess, setPingSuccess] = useState(false);
+
     const fetchStatuses = async () => {
         setStatusLoading(true);
         try {
@@ -100,10 +110,39 @@ export default function Home() {
         setStatusLoading(false);
     };
 
+    const fetchTelemetry = async () => {
+        try {
+            const res = await fetch("/api/telemetry");
+            if (res.ok) {
+                const json = await res.json();
+                if (json.status === "ok") {
+                    setTelemetry(json.data);
+                }
+            }
+        } catch { /* ignore */ }
+    };
+
+    const handleSendPing = async () => {
+        setPingLoading(true);
+        try {
+            const res = await fetch("/api/telemetry", { method: "POST" });
+            if (res.ok) {
+                setPingSuccess(true);
+                fetchTelemetry();
+                setTimeout(() => setPingSuccess(false), 3000);
+            }
+        } catch { /* ignore */ }
+        setPingLoading(false);
+    };
+
     useEffect(() => {
         if (status === "authenticated") {
             fetchStatuses();
-            const interval = setInterval(fetchStatuses, 30000);
+            fetchTelemetry();
+            const interval = setInterval(() => {
+                fetchStatuses();
+                fetchTelemetry();
+            }, 30000);
             return () => clearInterval(interval);
         }
     }, [status]);
@@ -228,6 +267,18 @@ export default function Home() {
     const healthyCount = Object.values(podStatuses).filter(s => s === "Healthy").length;
     const totalCount = Object.keys(podStatuses).length;
 
+    const getCloudProviderLabel = (provider?: string) => {
+        switch (provider) {
+            case "aws": return t("cloud.aws");
+            case "azure": return t("cloud.azure");
+            case "gcp": return t("cloud.gcp");
+            case "docker-desktop": return t("cloud.dockerDesktop");
+            case "minikube": return t("cloud.minikube");
+            case "kind": return t("cloud.kind");
+            default: return t("cloud.selfHosted");
+        }
+    };
+
     return (
         <div className="flex min-h-screen">
             <Sidebar />
@@ -243,14 +294,14 @@ export default function Home() {
                             {t("home.subtitle")}
                         </p>
                     </div>
-                    <button onClick={fetchStatuses} className="btn-ghost">
+                    <button onClick={() => { fetchStatuses(); fetchTelemetry(); }} className="btn-ghost">
                         <RefreshCw className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`} />
                         {t("common.refresh")}
                     </button>
                 </div>
 
                 {/* Status Summary Cards */}
-                <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <div className="panel-card p-5">
                         <p className="text-[11px] text-muted uppercase tracking-wide mb-1">{t("home.activeServices")}</p>
                         <p className="text-2xl font-semibold text-foreground">{SERVICES.length + (isAdmin ? 1 : 0)}</p>
@@ -260,8 +311,62 @@ export default function Home() {
                         <p className="text-2xl font-semibold text-success">{healthyCount}<span className="text-sm text-muted font-normal">/{totalCount}</span></p>
                     </div>
                     <div className="panel-card p-5">
-                        <p className="text-[11px] text-muted uppercase tracking-wide mb-1">Platform</p>
-                        <p className="text-2xl font-semibold text-foreground">K8s</p>
+                        <p className="text-[11px] text-muted uppercase tracking-wide mb-1">{t("cloud.provider")}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <Cloud className="w-5 h-5 text-primary" />
+                            <span className="text-base font-semibold text-foreground truncate">
+                                {telemetry?.cloudProvider?.toUpperCase() || "K8S"}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="panel-card p-5">
+                        <p className="text-[11px] text-muted uppercase tracking-wide mb-1">{t("cloud.telemetry")}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className={`status-dot ${telemetry?.enabled ? "status-dot-healthy" : "status-dot-pending"}`}></span>
+                            <span className="text-sm font-medium text-foreground">
+                                {telemetry?.enabled ? t("cloud.telemetryActive") : t("cloud.telemetryOptOut")}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Cloud & Telemetry Banner */}
+                <div className="panel-card p-4 mb-8 bg-surface/80 border border-cardBorder flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                            <Server className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-foreground">
+                                    {getCloudProviderLabel(telemetry?.cloudProvider)}
+                                </span>
+                                <span className="badge badge-neutral text-[10px] font-mono">
+                                    {telemetry?.clusterId || "cl-local-instance"}
+                                </span>
+                            </div>
+                            <p className="text-xs text-muted mt-0.5">
+                                {t("cloud.lastPing")}: {telemetry?.lastPingTime ? new Date(telemetry.lastPingTime).toLocaleTimeString() : t("cloud.never")}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end md:self-auto">
+                        <button
+                            onClick={handleSendPing}
+                            disabled={pingLoading || !telemetry?.enabled}
+                            className="btn-secondary text-xs flex items-center gap-1.5"
+                            title={t("cloud.sendPing")}
+                        >
+                            {pingLoading ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />
+                            ) : pingSuccess ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+                            ) : (
+                                <Send className="w-3.5 h-3.5 text-muted" />
+                            )}
+                            <span>{pingSuccess ? t("cloud.pingSent") : t("cloud.sendPing")}</span>
+                        </button>
                     </div>
                 </div>
 

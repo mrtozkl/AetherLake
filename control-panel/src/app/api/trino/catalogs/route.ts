@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../../auth/[...nextauth]/route";
+import { authOptions } from "../../../lib/auth";
 import { TRINO_URL, trinoFetch, getSecretKey } from "../../../../trino";
 import * as k8s from "@kubernetes/client-node";
 

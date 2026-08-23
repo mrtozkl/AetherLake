@@ -1,5 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" alt="Kubernetes" />
+  <img src="https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=white" alt="AWS" />
+  <img src="https://img.shields.io/badge/Azure-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white" alt="Azure" />
   <img src="https://img.shields.io/badge/Helm-0F1689?style=for-the-badge&logo=helm&logoColor=white" alt="Helm" />
   <img src="https://img.shields.io/badge/Apache%20Iceberg-4E8EE9?style=for-the-badge" alt="Iceberg" />
   <img src="https://img.shields.io/badge/Trino-DD00A1?style=for-the-badge&logo=trino&logoColor=white" alt="Trino" />
@@ -266,22 +268,49 @@ queries, Polaris catalogs, Airflow DAGs. Build with
 ## 📁 Project Structure
 
 ```
-├── control-panel/        # Next.js UI (overview, kafka, flink, sql ide, …)
+├── control-panel/        # Next.js 16 UI (overview, kafka, flink, telemetry, …)
 ├── helm-charts/
-│   ├── core-data-stack/  # data infra chart (+ vendored subcharts)
+│   ├── core-data-stack/  # Data infra chart (+ values-aws.yaml, values-azure.yaml)
 │   └── security-stack/   # Keycloak + realm/OIDC provisioning
+├── terraform/
+│   ├── aws/              # AWS EKS, S3 Lakehouse, IAM IRSA, RDS PostgreSQL
+│   └── azure/            # Azure AKS, ADLS Gen2, Workload Identity, Flexible PG
 ├── mcp-server/           # MCP tools for AI assistants
-├── pipelines/            # airflow dags, spark, flink sql-runner + examples, dbt
-├── docs/                 # component reference & guides
+├── pipelines/            # Airflow DAGs, Spark, Flink SQL-runner + examples, dbt
+├── docs/                 # Multi-cloud deployment guides & telemetry reference
 ├── aetherlake-ingress.yaml
 └── install.sh
 ```
 
 ---
 
+## ☁️ Cloud Deployments (AWS & Azure)
+
+AetherLake is cloud-native and ready for production deployment on major cloud providers:
+
+- **Amazon Web Services (AWS)**: Amazon EKS + Amazon S3 + AWS IAM IRSA (IAM Roles for Service Accounts) + Amazon RDS PostgreSQL.
+  - Terraform Module: [`terraform/aws/`](terraform/aws/)
+  - Helm Profile: [`helm-charts/core-data-stack/values-aws.yaml`](helm-charts/core-data-stack/values-aws.yaml)
+  - Deployment Guide: [`docs/guide/cloud-aws.md`](docs/guide/cloud-aws.md)
+- **Microsoft Azure**: Azure Kubernetes Service (AKS) + Azure Data Lake Storage Gen2 (ADLS Gen2) + Azure Workload Identity + Azure PostgreSQL Flexible Server.
+  - Terraform Module: [`terraform/azure/`](terraform/azure/)
+  - Helm Profile: [`helm-charts/core-data-stack/values-azure.yaml`](helm-charts/core-data-stack/values-azure.yaml)
+  - Deployment Guide: [`docs/guide/cloud-azure.md`](docs/guide/cloud-azure.md)
+
+---
+
+## 📡 Anonymous Telemetry
+
+AetherLake includes an anonymous heartbeat to track installation counts, detected cloud environments, and component health. It never collects PII, table schemas, or dataset contents. You can opt-out at any time via `telemetry.enabled=false` in Helm or `TELEMETRY_ENABLED=false`. See [`docs/guide/telemetry.md`](docs/guide/telemetry.md) for full disclosure.
+
+---
+
 ## 🗺️ Roadmap
 
-- [ ] Terraform / Pulumi modules · Grafana + Prometheus stack
+- [x] AWS EKS + S3 + IAM IRSA Terraform & Helm Stack
+- [x] Azure AKS + ADLS Gen2 + Workload Identity Terraform & Helm Stack
+- [x] Anonymous Installation & Health Telemetry
+- [ ] Grafana + Prometheus stack
 - [ ] Apache Ranger policies · lineage UI · multi-cluster federation
 - [ ] GitOps (ArgoCD) · automated backups · chart on an artifact registry
 

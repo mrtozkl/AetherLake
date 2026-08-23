@@ -1,0 +1,77 @@
+{{- if .Values.telemetry.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aetherlake-telemetry-ping
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-telemetry
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  schedule: {{ .Values.telemetry.cronSchedule | default "0 0 * * *" | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: aetherlake-telemetry
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: telemetry-ping
+              image: {{ .Values.telemetry.image | default "curlimages/curl:8.6.0" | quote }}
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  ENDPOINT="{{ .Values.telemetry.endpoint }}"
+                  PROVIDER="{{ .Values.global.cloudProvider | default "local" }}"
+                  CHART_VERSION="{{ .Chart.Version }}"
+                  APP_VERSION="{{ .Chart.AppVersion | default "1.0.0" }}"
+                  
+                  # Extract or generate anonymous cluster id from credentials secret if available
+                  CLUSTER_ID=$(cat /etc/credentials/cluster-id 2>/dev/null || echo "cluster-$(uname -n | tr -dc 'a-zA-Z0-9' | head -c 16)")
+
+                  echo "📡 Sending AetherLake anonymous telemetry heartbeat..."
+                  
+                  JSON_PAYLOAD=$(cat <<EOF
+                  {
+                    "cluster_id": "$CLUSTER_ID",
+                    "cloud_provider": "$PROVIDER",
+                    "app_version": "$APP_VERSION",
+                    "chart_version": "$CHART_VERSION",
+                    "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+                    "components": {
+                      "trino": {{ .Values.trino.enabled | default false }},
+                      "polaris": {{ .Values.polaris.enabled | default false }},
+                      "kafka": {{ .Values.kafka.enabled | default false }},
+                      "flink": {{ .Values.flink.enabled | default false }},
+                      "airflow": {{ .Values.airflow.enabled | default false }},
+                      "superset": {{ .Values.superset.enabled | default false }},
+                      "milvus": {{ .Values.milvus.enabled | default false }}
+                    }
+                  }
+                  EOF
+                  )
+
+                  curl -s -X POST "$ENDPOINT" \
+                    -H "Content-Type: application/json" \
+                    -H "User-Agent: AetherLake-Telemetry/$APP_VERSION" \
+                    -d "$JSON_PAYLOAD" \
+                    --max-time 10 || echo "⚠️ Telemetry ping completed with non-fatal status."
+                  
+                  echo "✅ Telemetry heartbeat dispatched."
+              volumeMounts:
+                - name: credentials
+                  mountPath: /etc/credentials
+                  readOnly: true
+          volumes:
+            - name: credentials
+              secret:
+                secretName: {{ .Values.global.existingSecret | default "open-lake-credentials" }}
+                optional: true
+{{- end }}

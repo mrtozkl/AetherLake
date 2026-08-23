@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]/route";
+import { authOptions } from "../../lib/auth";
 
 const POLARIS_URL = process.env.POLARIS_URL || "http://core-data-stack-polaris:8181";
 const CLIENT_ID = process.env.POLARIS_CLIENT_ID || "aetherlake-admin";
