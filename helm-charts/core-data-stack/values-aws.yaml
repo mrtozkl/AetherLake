@@ -1,0 +1,95 @@
+# ==============================================================================
+# AetherLake Core Data Stack - AWS Production Profile (EKS + S3 + RDS)
+# ==============================================================================
+# Usage:
+#   helm upgrade --install core-data-stack ./helm-charts/core-data-stack \
+#     -f ./helm-charts/core-data-stack/values-aws.yaml \
+#     --namespace aetherlake
+# ==============================================================================
+
+global:
+  cloudProvider: "aws"
+  existingSecret: "open-lake-credentials"
+  s3:
+    endpoint: "https://s3.eu-central-1.amazonaws.com"
+    defaultBucket: "aetherlake-lakehouse-eu-central-1"
+    region: "eu-central-1"
+    pathStyleAccess: false
+
+# Disable local MinIO container in AWS since Amazon S3 is used natively
+minio:
+  enabled: false
+
+# Telemetry: Anonymous installation and health metrics
+telemetry:
+  enabled: true
+  endpoint: "https://aetherlake-telemetry.mrtozkl.workers.dev/v1/ping"
+  cronSchedule: "0 0 * * *" # Daily heartbeat
+
+# Apache Polaris (Iceberg REST Catalog) on AWS
+polaris:
+  enabled: true
+  replicaCount: 2
+  serviceAccount:
+    create: true
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/aetherlake-polaris-s3-role"
+  storage:
+    type: "S3"
+    defaultBaseLocation: "s3://aetherlake-lakehouse-eu-central-1/polaris"
+  initCatalog:
+    enabled: true
+    name: "lakehouse_catalog"
+    s3Endpoint: "https://s3.eu-central-1.amazonaws.com"
+    s3Bucket: "aetherlake-lakehouse-eu-central-1"
+
+# Trino (SQL Engine) configured for AWS S3 & IRSA
+trino:
+  enabled: true
+  server:
+    workers: 4
+  serviceAccount:
+    create: true
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/aetherlake-trino-s3-role"
+  additionalCatalogs:
+    iceberg: |-
+      connector.name=iceberg
+      iceberg.catalog.type=rest
+      iceberg.rest-catalog.uri=http://core-data-stack-polaris:8181/api/catalog
+      iceberg.rest-catalog.warehouse=lakehouse_catalog
+      iceberg.rest-catalog.security=OAUTH2
+      iceberg.rest-catalog.oauth2.credential=${ENV:POLARIS_CREDENTIAL}
+      iceberg.rest-catalog.oauth2.scope=PRINCIPAL_ROLE:ALL
+      iceberg.rest-catalog.vended-credentials-enabled=true
+      fs.native-s3.enabled=true
+      s3.region=eu-central-1
+      s3.path-style-access=false
+
+# Apache Kafka (Strimzi) on AWS with EBS gp3 storage
+kafka:
+  enabled: true
+  storage:
+    type: persistent-claim
+    size: 100Gi
+    class: gp3
+
+# Apache Flink on AWS with S3 checkpointing
+flink:
+  enabled: true
+  flinkProperties:
+    state.backend: filesystem
+    state.checkpoints.dir: s3://aetherlake-lakehouse-eu-central-1/flink/checkpoints
+    state.savepoints.dir: s3://aetherlake-lakehouse-eu-central-1/flink/savepoints
+    s3.region: eu-central-1
+
+# External PostgreSQL (Amazon RDS) configuration
+externalPostgresql:
+  enabled: true
+  host: "aetherlake-metastore.c123456789.eu-central-1.rds.amazonaws.com"
+  port: 5432
+  database: "aetherlake"
+  username: "aetheradmin"
+  existingSecret: "rds-postgres-credentials"
+  secretKeys:
+    adminPasswordKey: "postgres-password"

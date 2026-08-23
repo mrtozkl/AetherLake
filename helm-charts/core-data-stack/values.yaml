@@ -1,9 +1,20 @@
 global:
+  # Cloud provider deployment mode: "local" (MinIO), "aws" (S3 + IRSA), "azure" (ADLS Gen2 + Workload Identity)
+  cloudProvider: "local"
   # The Control Panel will dynamically provision this Secret and update it via the Kubernetes API
   existingSecret: "open-lake-credentials"
   s3:
     endpoint: "http://minio-hl:9000"
     defaultBucket: "lakehouse"
+    region: "us-east-1"
+    pathStyleAccess: true
+
+# Telemetry: Anonymous heartbeat and installation metrics collection
+telemetry:
+  enabled: true
+  endpoint: "https://aetherlake-telemetry.mrtozkl.workers.dev/v1/ping"
+  cronSchedule: "0 0 * * *"
+  image: "curlimages/curl:8.6.0"
 
 # Optional demo dataset (iceberg.demo.events / iceberg.demo.users) seeded after
 # install via a post-install hook so a fresh cluster has data to explore in the

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../auth/[...nextauth]/route';
+import { authOptions } from '../../../lib/auth';
 import * as k8s from '@kubernetes/client-node';
 
 const kc = new k8s.KubeConfig();

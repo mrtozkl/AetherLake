@@ -114,6 +114,9 @@ TRINO_INTERNAL_SHARED_SECRET="$(gen_secret)"
 # secret (aetherlake-tls.yaml). Trino's HTTPS listener opens it at startup.
 TRINO_KEYSTORE_PASSWORD="$(gen_secret)"
 
+# Unique anonymous cluster identifier for telemetry and node identity
+CLUSTER_ID="cl-$(gen_secret | tr '[:upper:]' '[:lower:]' | cut -c 1-16)"
+
 # Create a credentials secret from the shared values above. Pass the name as $1.
 create_credentials_secret() {
     local secret_name="$1"
@@ -123,6 +126,7 @@ create_credentials_secret() {
     fi
     echo "   Creating $secret_name..."
     kubectl create secret generic "$secret_name" -n aetherlake \
+        --from-literal=cluster-id="$CLUSTER_ID" \
         --from-literal=minio-root-user="$MINIO_ROOT_USER" \
         --from-literal=minio-root-password="$MINIO_ROOT_PASSWORD" \
         --from-literal=trino-oidc-secret="$TRINO_OIDC_SECRET" \
@@ -176,6 +180,7 @@ create_credentials_secret aetherlake-credentials
 
 # Keys added after the initial release — backfill them into pre-existing secrets.
 for secret_name in open-lake-credentials aetherlake-credentials; do
+    ensure_secret_key "$secret_name" cluster-id "$CLUSTER_ID"
     ensure_secret_key "$secret_name" realm-admin-password "$REALM_ADMIN_PASSWORD"
     ensure_secret_key "$secret_name" superset-secret-key "$SUPERSET_SECRET_KEY"
     ensure_secret_key "$secret_name" superset-admin-password "$SUPERSET_ADMIN_PASSWORD"
@@ -502,6 +507,52 @@ kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --ti
 # 7. Apply Ingress
 echo "🌐 Applying Ingress rules..."
 kubectl apply -f aetherlake-ingress.yaml
+
+# 8. Anonymous Installation Telemetry (enabled by default; opt-outable via TELEMETRY_ENABLED=false / DO_NOT_TRACK=1)
+TELEMETRY_ENABLED="${TELEMETRY_ENABLED:-${AETHERLAKE_TELEMETRY_ENABLED:-true}}"
+if [ "$DO_NOT_TRACK" = "1" ] || [ "$DO_NOT_TRACK" = "true" ]; then
+    TELEMETRY_ENABLED="false"
+fi
+TELEMETRY_ENDPOINT="${TELEMETRY_ENDPOINT:-${AETHERLAKE_TELEMETRY_ENDPOINT:-https://aetherlake-telemetry.mrtozkl.workers.dev/v1/ping}}"
+if [ "$TELEMETRY_ENABLED" != "false" ] && [ "$TELEMETRY_ENABLED" != "0" ] && [ "$TELEMETRY_ENABLED" != "off" ]; then
+    echo "📡 Reporting anonymous installation telemetry..."
+    K8S_VER="$(kubectl version --short 2>/dev/null || kubectl version 2>/dev/null | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n 1 || echo 'unknown')"
+    NODE_CNT="$(kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ' || echo '1')"
+    
+    PROVIDER="self-hosted"
+    if kubectl get nodes -o wide 2>/dev/null | grep -qi "eks"; then
+        PROVIDER="aws"
+    elif kubectl get nodes -o wide 2>/dev/null | grep -qi "aks"; then
+        PROVIDER="azure"
+    elif kubectl get nodes -o wide 2>/dev/null | grep -qi "gke"; then
+        PROVIDER="gcp"
+    elif kubectl get nodes -o wide 2>/dev/null | grep -qi "docker-desktop"; then
+        PROVIDER="docker-desktop"
+    elif kubectl get nodes -o wide 2>/dev/null | grep -qi "minikube"; then
+        PROVIDER="minikube"
+    elif kubectl get nodes -o wide 2>/dev/null | grep -qi "kind"; then
+        PROVIDER="kind"
+    fi
+
+    PAYLOAD=$(cat <<EOF
+{
+  "event": "install_completed",
+  "cluster_id": "$CLUSTER_ID",
+  "cloud_provider": "$PROVIDER",
+  "k8s_version": "$K8S_VER",
+  "node_count": $NODE_CNT,
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "app_version": "1.0.0"
+}
+EOF
+    )
+
+    curl -s -X POST "$TELEMETRY_ENDPOINT" \
+        -H "Content-Type: application/json" \
+        -H "User-Agent: AetherLake-Installer/1.0.0" \
+        -d "$PAYLOAD" \
+        --max-time 5 >/dev/null 2>&1 || true
+fi
 
 echo ""
 echo "✅ AetherLake has been successfully deployed to Kubernetes!"

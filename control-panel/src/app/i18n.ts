@@ -120,6 +120,25 @@ export const translations = {
         "home.signInSubtitle": "Sign in to access the Data Platform Control Panel",
         "home.ssoSignIn": "Sign in with Keycloak SSO",
 
+        // Cloud & Telemetry
+        "cloud.environment": "Cloud Environment",
+        "cloud.provider": "Cloud Provider",
+        "cloud.clusterId": "Anonymous Cluster ID",
+        "cloud.telemetry": "Anonymous Telemetry",
+        "cloud.telemetryActive": "Active & Connected",
+        "cloud.telemetryOptOut": "Disabled (Opt-out)",
+        "cloud.sendPing": "Send Heartbeat",
+        "cloud.pingSent": "Heartbeat sent!",
+        "cloud.lastPing": "Last Ping",
+        "cloud.never": "Never",
+        "cloud.aws": "Amazon Web Services (AWS EKS)",
+        "cloud.azure": "Microsoft Azure (AKS)",
+        "cloud.gcp": "Google Cloud Platform (GKE)",
+        "cloud.dockerDesktop": "Docker Desktop",
+        "cloud.minikube": "Minikube",
+        "cloud.kind": "Kubernetes in Docker (Kind)",
+        "cloud.selfHosted": "Self-Hosted / Hybrid K8s",
+
         // External
         "ext.minio": "MinIO Storage",
         "ext.minioDesc": "S3-compatible object storage layer.",
@@ -417,6 +436,25 @@ export const translations = {
         "home.signInTitle": "AetherLake",
         "home.signInSubtitle": "Veri Platformu Kontrol Paneline erişmek için giriş yapın",
         "home.ssoSignIn": "Keycloak SSO ile Giriş",
+
+        // Bulut & Telemetri
+        "cloud.environment": "Bulut Ortamı",
+        "cloud.provider": "Bulut Sağlayıcı",
+        "cloud.clusterId": "Anonim Küme Kimliği (Cluster ID)",
+        "cloud.telemetry": "Anonim Telemetri",
+        "cloud.telemetryActive": "Aktif & Bağlı",
+        "cloud.telemetryOptOut": "Devre Dışı (Opt-out)",
+        "cloud.sendPing": "Canlılık Sinyali Gönder",
+        "cloud.pingSent": "Sinyal gönderildi!",
+        "cloud.lastPing": "Son Sinyal",
+        "cloud.never": "Hiçbir zaman",
+        "cloud.aws": "Amazon Web Services (AWS EKS)",
+        "cloud.azure": "Microsoft Azure (AKS)",
+        "cloud.gcp": "Google Cloud Platform (GKE)",
+        "cloud.dockerDesktop": "Docker Desktop",
+        "cloud.minikube": "Minikube",
+        "cloud.kind": "Kubernetes in Docker (Kind)",
+        "cloud.selfHosted": "Özel Sunucu / Hibrit K8s",
 
         // External
         "ext.minio": "MinIO Storage",

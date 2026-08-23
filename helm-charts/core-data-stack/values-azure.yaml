@@ -1,0 +1,92 @@
+# ==============================================================================
+# AetherLake Core Data Stack - Azure Production Profile (AKS + ADLS Gen2 + Flexible Server)
+# ==============================================================================
+# Usage:
+#   helm upgrade --install core-data-stack ./helm-charts/core-data-stack \
+#     -f ./helm-charts/core-data-stack/values-azure.yaml \
+#     --namespace aetherlake
+# ==============================================================================
+
+global:
+  cloudProvider: "azure"
+  existingSecret: "open-lake-credentials"
+  azure:
+    storageAccount: "aetherlakeadls"
+    container: "lakehouse"
+    endpoint: "https://aetherlakeadls.dfs.core.windows.net"
+
+# Disable local MinIO container since Azure ADLS Gen2 is used
+minio:
+  enabled: false
+
+# Telemetry: Anonymous installation and health metrics
+telemetry:
+  enabled: true
+  endpoint: "https://aetherlake-telemetry.mrtozkl.workers.dev/v1/ping"
+  cronSchedule: "0 0 * * *"
+
+# Apache Polaris (Iceberg REST Catalog) on Azure
+polaris:
+  enabled: true
+  replicaCount: 2
+  serviceAccount:
+    create: true
+    annotations:
+      azure.workload.identity/client-id: "00000000-0000-0000-0000-000000000000"
+  storage:
+    type: "ADLS"
+    defaultBaseLocation: "abfs://lakehouse@aetherlakeadls.dfs.core.windows.net/polaris"
+  initCatalog:
+    enabled: true
+    name: "lakehouse_catalog"
+    adlsEndpoint: "https://aetherlakeadls.dfs.core.windows.net"
+    adlsContainer: "lakehouse"
+
+# Trino (SQL Engine) configured for Azure ADLS Gen2 & Workload Identity
+trino:
+  enabled: true
+  server:
+    workers: 4
+  serviceAccount:
+    create: true
+    annotations:
+      azure.workload.identity/client-id: "00000000-0000-0000-0000-000000000000"
+  additionalCatalogs:
+    iceberg: |-
+      connector.name=iceberg
+      iceberg.catalog.type=rest
+      iceberg.rest-catalog.uri=http://core-data-stack-polaris:8181/api/catalog
+      iceberg.rest-catalog.warehouse=lakehouse_catalog
+      iceberg.rest-catalog.security=OAUTH2
+      iceberg.rest-catalog.oauth2.credential=${ENV:POLARIS_CREDENTIAL}
+      iceberg.rest-catalog.oauth2.scope=PRINCIPAL_ROLE:ALL
+      iceberg.rest-catalog.vended-credentials-enabled=true
+      fs.native-azure.enabled=true
+      azure.abfs-storage-account=aetherlakeadls.dfs.core.windows.net
+
+# Apache Kafka (Strimzi) on Azure with Managed Disks
+kafka:
+  enabled: true
+  storage:
+    type: persistent-claim
+    size: 100Gi
+    class: managed-csi-premium
+
+# Apache Flink on Azure with ADLS Gen2 checkpointing
+flink:
+  enabled: true
+  flinkProperties:
+    state.backend: filesystem
+    state.checkpoints.dir: abfs://lakehouse@aetherlakeadls.dfs.core.windows.net/flink/checkpoints
+    state.savepoints.dir: abfs://lakehouse@aetherlakeadls.dfs.core.windows.net/flink/savepoints
+
+# External PostgreSQL (Azure Database for PostgreSQL Flexible Server)
+externalPostgresql:
+  enabled: true
+  host: "aetherlake-metastore-pg.postgres.database.azure.com"
+  port: 5432
+  database: "aetherlake"
+  username: "aetheradmin"
+  existingSecret: "azure-postgres-credentials"
+  secretKeys:
+    adminPasswordKey: "postgres-password"

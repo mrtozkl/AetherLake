@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../auth/[...nextauth]/route';
+import { authOptions } from '../../lib/auth';
 import * as k8s from '@kubernetes/client-node';
 
 const kc = new k8s.KubeConfig();
@@ -12,7 +12,7 @@ const NAMESPACE = 'aetherlake';
 
 // Display-name -> pod label selector. Mirrors api/status so the Observability
 // page can filter pods by the same logical services shown on the dashboard.
-export const SERVICE_POD_MAP: Record<string, { label: string; value: string }> = {
+const SERVICE_POD_MAP: Record<string, { label: string; value: string }> = {
     'MinIO Storage': { label: 'v1.min.io/tenant', value: 'minio' },
     'Trino Analytics': { label: 'app.kubernetes.io/name', value: 'trino' },
     'Apache Airflow': { label: 'tier', value: 'airflow' },

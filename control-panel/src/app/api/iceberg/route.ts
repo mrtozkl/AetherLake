@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]/route";
+import { authOptions } from "../../lib/auth";
 
 // Iceberg table explorer backend. Talks to the Polaris Iceberg REST catalog and
 // shapes the verbose table metadata into a UI-friendly form.

@@ -61,3 +61,9 @@ helm-charts/core-data-stack/charts/polaris-*.tgz
 qwen-code-export-*.md
 *.export.md
 
+# Private Telemetry collector & worker infra (keep outside repo)
+telemetry-collector/
+telemetry-worker/
+wrangler.toml
+
+
