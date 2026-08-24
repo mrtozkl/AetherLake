@@ -44,7 +44,7 @@ This guide covers deploying AetherLake in production on **Amazon Web Services (A
 
 ## 🚀 1. Infrastructure Provisioning via Terraform
 
-AetherLake provides a turnkey Terraform module in [`terraform/aws`](../../terraform/aws) that provisions:
+AetherLake provides a turnkey Terraform module in [`terraform/aws`](https://github.com/mrtozkl/AetherLake/tree/main/terraform/aws) that provisions:
 - Amazon VPC with public, private, and database subnets.
 - Amazon EKS cluster with dedicated system and compute node groups.
 - Amazon S3 bucket with AWS KMS customer-managed key encryption.
@@ -69,7 +69,7 @@ aws eks --region eu-central-1 update-kubeconfig --name aetherlake-cloud
 
 ## 📦 2. Deploy AetherLake Helm Chart
 
-Use the pre-configured AWS values profile [`values-aws.yaml`](../../helm-charts/core-data-stack/values-aws.yaml):
+Use the pre-configured AWS values profile [`values-aws.yaml`](https://github.com/mrtozkl/AetherLake/blob/main/helm-charts/core-data-stack/values-aws.yaml):
 
 ```bash
 helm upgrade --install core-data-stack ./helm-charts/core-data-stack \

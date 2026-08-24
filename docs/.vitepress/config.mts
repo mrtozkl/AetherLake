@@ -5,6 +5,7 @@ export default withMermaid(defineConfig({
   title: "AetherLake",
   description: "Open-source Data Lakehouse platform on Kubernetes.",
   base: '/AetherLake/', // For GitHub Pages deployment
+  ignoreDeadLinks: true,
   head: [
     ['link', { rel: 'icon', href: '/AetherLake/favicon.ico' }]
   ],
@@ -15,7 +16,8 @@ export default withMermaid(defineConfig({
     },
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Guide', link: '/guide/quick-start' }
+      { text: 'Guide', link: '/guide/quick-start' },
+      { text: 'Cloud (AWS/Azure)', link: '/guide/cloud-aws' }
     ],
     sidebar: [
       {
@@ -25,6 +27,14 @@ export default withMermaid(defineConfig({
           { text: 'Quick Start', link: '/guide/quick-start' },
           { text: 'Architecture', link: '/guide/architecture' },
           { text: 'Components', link: '/guide/components' },
+        ]
+      },
+      {
+        text: 'Cloud Deployments',
+        items: [
+          { text: 'AWS Deployment (EKS & S3)', link: '/guide/cloud-aws' },
+          { text: 'Azure Deployment (AKS & ADLS)', link: '/guide/cloud-azure' },
+          { text: 'Anonymous Telemetry', link: '/guide/telemetry' }
         ]
       },
       {

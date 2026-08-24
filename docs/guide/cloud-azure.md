@@ -44,7 +44,7 @@ This guide covers deploying AetherLake in production on **Microsoft Azure** usin
 
 ## 🚀 1. Infrastructure Provisioning via Terraform
 
-AetherLake provides a turnkey Terraform module in [`terraform/azure`](../../terraform/azure) that provisions:
+AetherLake provides a turnkey Terraform module in [`terraform/azure`](https://github.com/mrtozkl/AetherLake/tree/main/terraform/azure) that provisions:
 - Azure Virtual Network & dedicated delegated subnets.
 - Azure Kubernetes Service (AKS) with OIDC issuer and Workload Identity enabled.
 - ADLS Gen2 Storage Account with Hierarchical Namespace (HNS) and lakehouse filesystem.
@@ -69,7 +69,7 @@ az aks get-credentials --resource-group aetherlake-aks-rg --name aetherlake-aks
 
 ## 📦 2. Deploy AetherLake Helm Chart
 
-Use the pre-configured Azure values profile [`values-azure.yaml`](../../helm-charts/core-data-stack/values-azure.yaml):
+Use the pre-configured Azure values profile [`values-azure.yaml`](https://github.com/mrtozkl/AetherLake/blob/main/helm-charts/core-data-stack/values-azure.yaml):
 
 ```bash
 helm upgrade --install core-data-stack ./helm-charts/core-data-stack \
