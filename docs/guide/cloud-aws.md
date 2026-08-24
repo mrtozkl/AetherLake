@@ -1,6 +1,6 @@
 # ☁️ Deploying AetherLake on Amazon Web Services (AWS)
 
-This guide covers deploying AetherLake in production on **Amazon Web Services (AWS)** using **Amazon EKS**, **Amazon S3**, **AWS IAM Roles for Service Accounts (IRSA)**, and **Amazon RDS PostgreSQL**.
+This guide covers deploying AetherLake in production on **Amazon Web Services (AWS)** using **Amazon EKS**, **Amazon S3**, **AWS IAM Roles for Service Accounts (IRSA)**, and **Amazon RDS PostgreSQL[...]
 
 ---
 
@@ -12,39 +12,39 @@ This guide covers deploying AetherLake in production on **Amazon Web Services (A
                                            ▼
                                AWS ALB Ingress Controller
                                            │
- ┌─────────────────────────────────────────┼─────────────────────────────────────────┐
- │ Amazon EKS Cluster (aetherlake ns)      │                                         │
- │                                         ▼                                         │
- │ ┌───────────────────┐       ┌───────────────────────┐   ┌───────────────────────┐ │
- │ │ Control Panel UI  │       │ Trino (SQL Engine)    │   │ Apache Polaris        │ │
- │ │ (Next.js 16)      │       │ (Native S3 Connector) │   │ (Iceberg REST Catalog)│ │
- │ └───────────────────┘       └───────────┬───────────┘   └───────────┬───────────┘ │
- │                                         │                           │             │
- │ ┌───────────────────┐       ┌───────────▼───────────┐               │             │
- │ │ Apache Kafka      │       │ Apache Flink          │               │             │
- │ │ (Strimzi KRaft)   │       │ (S3 Checkpoints)      │               │             │
- │ └───────────────────┘       └───────────┬───────────┘               │             │
- └─────────────────────────────────────────┼───────────────────────────┼─────────────┘
+  ┌─────────────────────────────────────────┼──────────────────────[...]
+  │ Amazon EKS Cluster (aetherlake ns)      │                                         │
+  │                                         ▼                                         │
+  │ ┌───────────────────┐       ┌───────────────────────┐   ┌─────────────[...]
+  │ │ Control Panel UI  │       │ Trino (SQL Engine)    │   │ Apache Polaris        │ │
+  │ │ (Next.js 16)      │       │ (Native S3 Connector) │   │ (Iceberg REST Catalog)│ │
+  │ └───────────────────┘       └───────────┬───────────┘   └───────────┬─[...]
+  │                                         │                           │             │
+  │ ┌───────────────────┐       ┌───────────▼───────────┐               │             │
+  │ │ Apache Kafka      │       │ Apache Flink          │               │             │
+  │ │ (Strimzi KRaft)   │       │ (S3 Checkpoints)      │               │             │
+  │ └───────────────────┘       └───────────┬───────────┘               │             │
+  └─────────────────────────────────────────┼──────────────────────[...]
                                            │                           │
                                            ▼                           ▼
-                 ┌───────────────────────────────────────────────────────────┐
-                 │ Amazon S3 Lakehouse Bucket (`s3://...`)                   │
-                 │ - Server-Side Encryption: AWS KMS                         │
-                 │ - Authentication: AWS IAM IRSA (No static credentials)    │
-                 │ - Iceberg Data & Metadata Parquet Files                   │
-                 └───────────────────────────────────────────────────────────┘
+                  ┌──────────────────────────────────────────────────────────[...]
+                  │ Amazon S3 Lakehouse Bucket (`s3://...`)                   │
+                  │ - Server-Side Encryption: AWS KMS                         │
+                  │ - Authentication: AWS IAM IRSA (No static credentials)    │
+                  │ - Iceberg Data & Metadata Parquet Files                   │
+                  └──────────────────────────────────────────────────────────[...]
                                            │
                                            ▼
-                 ┌───────────────────────────────────────────────────────────┐
-                 │ Amazon RDS PostgreSQL Metastore (Polaris / Identity DB)   │
-                 └───────────────────────────────────────────────────────────┘
+                  ┌──────────────────────────────────────────────────────────[...]
+                  │ Amazon RDS PostgreSQL Metastore (Polaris / Identity DB)   │
+                  └──────────────────────────────────────────────────────────[...]
 ```
 
 ---
 
 ## 🚀 1. Infrastructure Provisioning via Terraform
 
-AetherLake provides a turnkey Terraform module in [`terraform/aws`](../../terraform/aws/) that provisions:
+AetherLake provides a turnkey Terraform module in [`terraform/aws`](../../terraform/aws) that provisions:
 - Amazon VPC with public, private, and database subnets.
 - Amazon EKS cluster with dedicated system and compute node groups.
 - Amazon S3 bucket with AWS KMS customer-managed key encryption.
