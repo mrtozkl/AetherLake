@@ -17,7 +17,8 @@ export default withMermaid(defineConfig({
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/quick-start' },
-      { text: 'Cloud (AWS/Azure)', link: '/guide/cloud-aws' }
+      { text: 'Cloud', link: '/guide/cloud-aws' },
+      { text: 'Operations', link: '/guide/troubleshooting' }
     ],
     sidebar: [
       {
@@ -26,7 +27,7 @@ export default withMermaid(defineConfig({
           { text: 'What is AetherLake?', link: '/guide/introduction' },
           { text: 'Quick Start', link: '/guide/quick-start' },
           { text: 'Architecture', link: '/guide/architecture' },
-          { text: 'Components', link: '/guide/components' },
+          { text: 'Components Overview', link: '/guide/components' },
         ]
       },
       {
@@ -34,7 +35,7 @@ export default withMermaid(defineConfig({
         items: [
           { text: 'AWS Deployment (EKS & S3)', link: '/guide/cloud-aws' },
           { text: 'Azure Deployment (AKS & ADLS)', link: '/guide/cloud-azure' },
-          { text: 'Anonymous Telemetry', link: '/guide/telemetry' }
+          { text: 'GCP Deployment (GKE & GCS)', link: '/guide/cloud-gcp' },
         ]
       },
       {
@@ -55,11 +56,19 @@ export default withMermaid(defineConfig({
         ]
       },
       {
-        text: 'Configuration',
+        text: 'Operations & Security',
+        items: [
+          { text: 'Production Hardening & Sizing', link: '/guide/production-hardening' },
+          { text: 'Troubleshooting & FAQ', link: '/guide/troubleshooting' },
+          { text: 'Anonymous Telemetry', link: '/guide/telemetry' },
+        ]
+      },
+      {
+        text: 'Platform Tooling & Config',
         items: [
           { text: 'Configuration Guide', link: '/guide/configuration' },
           { text: 'Control Panel', link: '/guide/control-panel' },
-          { text: 'MCP Server', link: '/guide/mcp-server' },
+          { text: 'MCP Server (AI Assistants)', link: '/guide/mcp-server' },
           { text: 'Data Pipelines', link: '/guide/pipelines' }
         ]
       },

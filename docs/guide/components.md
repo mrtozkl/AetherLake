@@ -17,7 +17,7 @@ Reference** in the sidebar.
 | **[Apache Flink](https://flink.apache.org/)** | Stream processing (Flink SQL jobs) | 2.1 (operator 1.15.0) | [Flink — Stream Processing](./components/flink) |
 | **[Milvus](https://milvus.io/)** | Vector similarity search | chart 5.0.14 | [Milvus — Vector DB](./components/milvus) |
 | **[PostgreSQL](https://www.postgresql.org/)** | Metadata datastore (shared + Keycloak) | 16-alpine | [PostgreSQL — Datastores](./components/postgres) |
-| **[dbt](https://www.getdbt.com/)** | SQL-based data transformation | — | [Data Pipelines](./pipelines) |
+| **[dbt](https://www.getdbt.com/)** | SQL-based data transformation | — | [dbt — Data Transformations](./components/dbt) |
 | **Control Panel** | Web UI for platform management | — | [Control Panel](./control-panel) |
 | **MCP Server** | Agent tooling (K8s/Trino/Polaris/Airflow) | — | [MCP Server](./mcp-server) |
 

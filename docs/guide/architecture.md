@@ -34,6 +34,8 @@ graph TD
         Milvus[Milvus<br/>Vector DB]
         OA[oauth2-proxy<br/>SSO gate]
         PG[(aetherlake-postgres<br/>shared)]
+        DBT[dbt Lakehouse<br/>Medallion transformations]
+        CP[Control Panel & MCP<br/>Next.js 16 + AI Tools]
 
         Trino -->|Iceberg REST| Polaris
         Polaris -->|metadata| PG
@@ -49,6 +51,8 @@ graph TD
         FlinkJob -->|produce / consume| Kafka
         FlinkJob -->|Iceberg REST| Polaris
         FlinkJob -->|S3| MinIO
+        DBT -->|SQL transformations| Trino
+        CP -->|Management & Observability| core
     end
 
     ingress -->|SSO check| OA
@@ -67,16 +71,17 @@ graph TD
 | Layer | Component(s) | Responsibility |
 |-------|--------------|----------------|
 | **Identity** | Keycloak + oauth2-proxy | Single sign-on, OIDC clients, realm roles; SSO gate for UIs without native OIDC |
-| **Storage** | MinIO | S3-compatible object storage (Iceberg data, vectors, raw files) |
+| **Storage** | MinIO / Cloud S3 | S3-compatible object storage (Iceberg data, vectors, raw files) |
 | **Catalog** | Apache Polaris | Iceberg REST catalog + S3 credential vending |
 | **Query** | Trino | Federated SQL over the Iceberg catalog, Kafka topics, and other sources |
 | **Streaming** | Apache Kafka (Strimzi) | Durable event streaming, in-cluster + authenticated external access |
 | **Stream processing** | Apache Flink | SQL jobs that read/write Kafka topics (per-job mini-clusters) |
-| **Processing** | Apache Spark | Distributed batch processing |
-| **Orchestration** | Apache Airflow | DAG-based pipeline scheduling |
+| **Transformations** | dbt (Data Build Tool) | Medallion architecture (Bronze → Silver → Gold) data curation and schema quality tests |
+| **Processing** | Apache Spark | Distributed batch processing and raw data ingestion |
+| **Orchestration** | Apache Airflow | DAG-based pipeline scheduling across Spark, dbt, and lakehouse storage |
 | **Analytics / BI** | Apache Superset | Dashboards and SQL exploration over Trino |
-| **Vector search** | Milvus | Similarity search for AI/ML workloads |
-| **Control** | Control Panel, MCP Server | Management UI + agent tooling |
+| **Vector search** | Milvus | Similarity search and vector embeddings for AI/ML workloads |
+| **Control** | Control Panel, MCP Server | Unified web management console (Next.js 16) + Model Context Protocol server for AI assistants |
 
 ## SSO / OIDC flow
 
