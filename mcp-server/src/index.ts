@@ -19,11 +19,11 @@ const AIRFLOW_AUTH = process.env.AIRFLOW_AUTH
   ? Buffer.from(process.env.AIRFLOW_AUTH).toString("base64")
   : null;
 
-function requireAirflowAuth(): string {
-  if (!AIRFLOW_AUTH) {
+export function requireAirflowAuth(authValue: string | null = AIRFLOW_AUTH): string {
+  if (!authValue) {
     throw new Error("AIRFLOW_AUTH env var is not set (expected format: user:password)");
   }
-  return AIRFLOW_AUTH;
+  return authValue;
 }
 
 // "user:pass" for Trino's PASSWORD (file) authenticator — Trino rejects
@@ -32,7 +32,7 @@ function requireAirflowAuth(): string {
 // TRINO_URL at the in-cluster service (https://core-data-stack-trino:8443)
 // or a port-forward, and run Node with NODE_EXTRA_CA_CERTS set to the
 // AetherLake root CA (aetherlake-root-ca secret, cert-manager namespace).
-const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
+export const TRINO_AUTH_HEADER: Record<string, string> = process.env.TRINO_BASIC_AUTH
   ? { Authorization: `Basic ${Buffer.from(process.env.TRINO_BASIC_AUTH).toString("base64")}` }
   : {};
 
@@ -42,7 +42,7 @@ kc.loadFromDefault();
 const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
 
 // Initialize MCP Server
-const server = new Server(
+export const server = new Server(
   {
     name: "AetherLake-MCP",
     version: "1.0.0",
@@ -55,14 +55,12 @@ const server = new Server(
 );
 
 // Register Tools
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: "get_platform_status",
-        description: "Get the current running status of all AetherLake components in the Kubernetes cluster.",
-        inputSchema: { type: "object", properties: {} },
-      },
+export const TOOLS_DEFINITION = [
+  {
+    name: "get_platform_status",
+    description: "Get the current running status of all AetherLake components in the Kubernetes cluster.",
+    inputSchema: { type: "object", properties: {} },
+  },
       {
         name: "get_service_logs",
         description: "Retrieve recent logs for a specific AetherLake service (e.g., trino, minio, airflow).",
@@ -118,7 +116,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["dag_id"],
         },
       }
-    ],
+];
+
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: TOOLS_DEFINITION
   };
 });
 
@@ -237,13 +239,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // Start the server
-async function main() {
+export async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("AetherLake MCP Server running on stdio");
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+if (process.argv[1] && (process.argv[1].endsWith("dist/index.js") || process.argv[1].endsWith("src/index.ts"))) {
+  main().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}

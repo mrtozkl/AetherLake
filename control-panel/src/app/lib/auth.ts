@@ -12,7 +12,7 @@ const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
 
 // In production every secret must come from the environment. Falling back to a
 // hardcoded value would ship a publicly-known secret, so fail fast instead.
-function requireInProduction(value: string | undefined, name: string, devFallback: string): string {
+export function requireInProduction(value: string | undefined, name: string, devFallback: string): string {
     if (value) return value;
     if (isProduction && !isBuildPhase) {
         throw new Error(`${name} must be set in production`);
@@ -26,26 +26,29 @@ const nextAuthSecret = requireInProduction(
     "insecure-development-only-secret"
 );
 
+const getCredentialsProvider = typeof CredentialsProvider === "function" ? CredentialsProvider : (CredentialsProvider as any).default;
+const getKeycloakProvider = typeof KeycloakProvider === "function" ? KeycloakProvider : (KeycloakProvider as any).default;
+
 const providers: any[] = [];
 
 // Local username/password admin account. Only enabled outside production so a
 // well-known credential can never be used against a real deployment. Keycloak
 // SSO is the only supported auth path in production.
-if (!isProduction) {
+if (!isProduction && getCredentialsProvider) {
     providers.push(
-        CredentialsProvider({
+        getCredentialsProvider({
             name: "AetherLake Admin (dev)",
             credentials: {
                 username: { label: "Username", type: "text", placeholder: "admin" },
                 password: { label: "Password", type: "password" }
             },
-            async authorize(credentials) {
+            async authorize(credentials: any) {
                 const validUsers = [
                     { id: "1", name: "admin", email: "admin@aetherlake.local", role: "data-admin" },
                     { id: "2", name: "user", email: "user@aetherlake.local", role: "data-scientist" },
                 ];
                 const user = validUsers.find(
-                    u => u.name === credentials?.username && credentials?.password === credentials?.username
+                    (u: any) => u.name === credentials?.username && credentials?.password === credentials?.username
                 );
                 if (user) return user;
                 return null;
@@ -55,9 +58,10 @@ if (!isProduction) {
 }
 
 // Keycloak SSO (active when realm is provisioned)
-providers.push(
-    KeycloakProvider({
-        clientId: process.env.KEYCLOAK_CLIENT_ID || "aetherlake-client",
+if (getKeycloakProvider) {
+    providers.push(
+        getKeycloakProvider({
+            clientId: process.env.KEYCLOAK_CLIENT_ID || "aetherlake-client",
         clientSecret: requireInProduction(
             process.env.KEYCLOAK_CLIENT_SECRET,
             "KEYCLOAK_CLIENT_SECRET",
@@ -66,6 +70,7 @@ providers.push(
         issuer: `${process.env.KEYCLOAK_URL || "http://keycloak.aetherlake.local"}/realms/aetherlake`
     })
 );
+}
 
 // Map Keycloak realm roles to the app-level role used by admin-only API routes.
 function roleFromKeycloakToken(accessToken: string): string | undefined {

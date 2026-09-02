@@ -26,6 +26,7 @@ export default function QueryIDE() {
     const [loadingCatalog, setLoadingCatalog] = useState<string | null>(null);
     const [loadingSchema, setLoadingSchema] = useState<string | null>(null);
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => { if (status === "authenticated") fetchCatalogs(); }, [status]);
 
     // Allow other pages (e.g. the Iceberg table explorer) to deep-link a query

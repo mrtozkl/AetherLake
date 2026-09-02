@@ -1,0 +1,131 @@
+name: Continuous Integration (CI)
+
+on:
+  push:
+    branches: [ main, 'release/**', 'feature/**' ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  control-panel:
+    name: Control Panel (Next.js & Frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: control-panel/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: control-panel
+
+      - name: Run ESLint
+        run: npm run lint
+        working-directory: control-panel
+
+      - name: Run unit tests
+        run: npm test
+        working-directory: control-panel
+
+      - name: Build production bundle
+        run: npm run build
+        working-directory: control-panel
+
+  mcp-server:
+    name: MCP Server (Model Context Protocol)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mcp-server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: mcp-server
+
+      - name: Build TypeScript to ESM
+        run: npm run build
+        working-directory: mcp-server
+
+      - name: Run unit tests
+        run: npm test
+        working-directory: mcp-server
+
+  helm-charts:
+    name: Helm Charts (Kubernetes)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Lint Core Data Stack chart
+        run: helm lint helm-charts/core-data-stack
+
+      - name: Lint Security Stack chart
+        run: helm lint helm-charts/security-stack
+
+      - name: Validate Helm template rendering (Dry Run)
+        run: |
+          helm template core-data-stack helm-charts/core-data-stack > /dev/null
+          helm template security-stack helm-charts/security-stack > /dev/null
+
+  pipelines:
+    name: Data Pipelines & Tests (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run pipeline unit tests
+        run: python3 -m unittest discover -s pipelines/tests -p "test_*.py" -v
+
+  docs:
+    name: Documentation (VitePress)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: docs
+
+      - name: Build documentation site
+        run: npm run docs:build
+        working-directory: docs

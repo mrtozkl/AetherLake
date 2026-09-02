@@ -66,4 +66,7 @@ telemetry-collector/
 telemetry-worker/
 wrangler.toml
 
-
+# Python
+__pycache__/
+*.pyc
+*.pyo
