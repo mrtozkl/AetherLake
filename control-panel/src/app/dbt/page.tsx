@@ -13,6 +13,7 @@ import {
     ChevronRight, ExternalLink, Sparkles, Check, X, Info
 } from "lucide-react";
 import { DbtModel, DbtSource, DbtDagNode, DbtDagEdge, DbtRunHistoryItem } from "../api/dbt/route";
+import LineageGraph from "./LineageGraph";
 
 export default function DbtPage() {
     const { data: session, status } = useSession({ required: true });
@@ -43,8 +44,18 @@ export default function DbtPage() {
     // Execution state
     const [runningCommand, setRunningCommand] = useState<string | null>(null);
 
-    // Zoom & Pan state for DAG
-    const [zoom, setZoom] = useState(1);
+    // Fullscreen lineage state
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && isFullscreen) {
+                setIsFullscreen(false);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isFullscreen]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -348,194 +359,25 @@ export default function DbtPage() {
                         </button>
                     </div>
 
-                    {activeTab === "lineage" && (
-                        <div className="flex items-center gap-1.5 pb-2">
-                            <button
-                                onClick={() => setZoom((z) => Math.min(z + 0.15, 1.6))}
-                                className="btn-ghost p-1.5"
-                                title={t("dbt.zoomIn")}
-                            >
-                                <ZoomIn className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                                onClick={() => setZoom((z) => Math.max(z - 0.15, 0.7))}
-                                className="btn-ghost p-1.5"
-                                title={t("dbt.zoomOut")}
-                            >
-                                <ZoomOut className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                                onClick={() => setZoom(1)}
-                                className="btn-ghost p-1.5"
-                                title={t("dbt.resetView")}
-                            >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
-                    )}
                 </div>
 
                 {/* Tab 1: Interactive Lineage DAG */}
                 {activeTab === "lineage" && (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                         {/* Interactive Graph Canvas */}
-                        <div className="lg:col-span-8 panel-card p-6 min-h-[560px] flex flex-col justify-between overflow-hidden relative">
-                            {/* DAG Layer Header Legend */}
-                            <div className="grid grid-cols-3 gap-4 border-b border-cardBorder/60 pb-3 mb-6">
-                                <div className="flex items-center gap-2">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                                    <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                                        1. {t("dbt.layerBronze")}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                                    <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                                        2. {t("dbt.layerSilver")}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                                    <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                                        3. {t("dbt.layerGold")}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Graph Layout */}
-                            <div
-                                className="flex-1 grid grid-cols-3 gap-6 items-center transition-transform duration-200"
-                                style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}
-                            >
-                                {/* Column 1: Bronze Sources */}
-                                <div className="flex flex-col gap-4">
-                                    {groupedNodes.bronzeNodes.map((node) => {
-                                        const isSelected = selectedNodeId === node.id;
-                                        const isUpstream = activeLineage.upstream.has(node.id);
-                                        const isDownstream = activeLineage.downstream.has(node.id);
-
-                                        return (
-                                            <motion.div
-                                                key={node.id}
-                                                whileHover={{ scale: 1.02 }}
-                                                onClick={() => setSelectedNodeId(node.id)}
-                                                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                                                    isSelected
-                                                        ? "bg-amber-500/15 border-amber-500 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500"
-                                                        : isUpstream
-                                                        ? "bg-amber-500/10 border-amber-500/60"
-                                                        : "bg-card/80 border-cardBorder hover:border-muted/50"
-                                                }`}
-                                            >
-                                                <div className="flex items-center justify-between mb-1.5">
-                                                    <span className="text-[10px] font-mono uppercase text-amber-400 tracking-wider font-semibold">
-                                                        Source (Iceberg)
-                                                    </span>
-                                                    <span className="badge-success text-[10px]">{node.status}</span>
-                                                </div>
-                                                <p className="text-sm font-semibold text-foreground font-mono truncate">
-                                                    {node.label}
-                                                </p>
-                                                <p className="text-[11px] text-muted truncate mt-0.5">{node.schema}</p>
-                                            </motion.div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Column 2: Silver Curated Models */}
-                                <div className="flex flex-col gap-4">
-                                    {groupedNodes.silverNodes.map((node) => {
-                                        const isSelected = selectedNodeId === node.id;
-                                        const isUpstream = activeLineage.upstream.has(node.id);
-                                        const isDownstream = activeLineage.downstream.has(node.id);
-
-                                        return (
-                                            <motion.div
-                                                key={node.id}
-                                                whileHover={{ scale: 1.02 }}
-                                                onClick={() => setSelectedNodeId(node.id)}
-                                                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                                                    isSelected
-                                                        ? "bg-blue-500/15 border-blue-500 shadow-lg shadow-blue-500/10 ring-1 ring-blue-500"
-                                                        : isUpstream || isDownstream
-                                                        ? "bg-blue-500/10 border-blue-500/60"
-                                                        : "bg-card/80 border-cardBorder hover:border-muted/50"
-                                                }`}
-                                            >
-                                                <div className="flex items-center justify-between mb-1.5">
-                                                    <span className="text-[10px] font-mono uppercase text-blue-400 tracking-wider font-semibold">
-                                                        Model ({node.materialization})
-                                                    </span>
-                                                    <span className="badge-success text-[10px] flex items-center gap-1">
-                                                        <Check className="w-2.5 h-2.5" /> OK
-                                                    </span>
-                                                </div>
-                                                <p className="text-sm font-semibold text-foreground font-mono truncate">
-                                                    {node.label}
-                                                </p>
-                                                <p className="text-[11px] text-muted truncate mt-0.5">{node.schema}</p>
-                                            </motion.div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Column 3: Gold Marts Models */}
-                                <div className="flex flex-col gap-4">
-                                    {groupedNodes.goldNodes.map((node) => {
-                                        const isSelected = selectedNodeId === node.id;
-                                        const isUpstream = activeLineage.upstream.has(node.id);
-                                        const isDownstream = activeLineage.downstream.has(node.id);
-
-                                        return (
-                                            <motion.div
-                                                key={node.id}
-                                                whileHover={{ scale: 1.02 }}
-                                                onClick={() => setSelectedNodeId(node.id)}
-                                                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                                                    isSelected
-                                                        ? "bg-amber-400/15 border-amber-400 shadow-lg shadow-amber-400/10 ring-1 ring-amber-400"
-                                                        : isDownstream
-                                                        ? "bg-amber-400/10 border-amber-400/60"
-                                                        : "bg-card/80 border-cardBorder hover:border-muted/50"
-                                                }`}
-                                            >
-                                                <div className="flex items-center justify-between mb-1.5">
-                                                    <span className="text-[10px] font-mono uppercase text-amber-300 tracking-wider font-semibold">
-                                                        Mart ({node.materialization})
-                                                    </span>
-                                                    <span className="badge-success text-[10px] flex items-center gap-1">
-                                                        <Check className="w-2.5 h-2.5" /> OK
-                                                    </span>
-                                                </div>
-                                                <p className="text-sm font-semibold text-foreground font-mono truncate">
-                                                    {node.label}
-                                                </p>
-                                                <p className="text-[11px] text-muted truncate mt-0.5">{node.schema}</p>
-                                            </motion.div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* DAG Footer Guidance */}
-                            <div className="mt-6 pt-3 border-t border-cardBorder/60 flex items-center justify-between text-xs text-muted">
-                                <div className="flex items-center gap-2">
-                                    <Info className="w-3.5 h-3.5 text-primary" />
-                                    <span>{t("dbt.selectNode")}</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="flex items-center gap-1">
-                                        <span className="w-2 h-2 rounded-full bg-primary"></span> {t("dbt.upstream")}
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span> {t("dbt.downstream")}
-                                    </span>
-                                </div>
-                            </div>
+                        <div className="lg:col-span-8 panel-card overflow-hidden h-[660px] flex flex-col relative rounded-xl border border-cardBorder shadow-lg">
+                            <LineageGraph
+                                rawNodes={dagNodes}
+                                rawEdges={dagEdges}
+                                selectedNodeId={selectedNodeId}
+                                onSelectNode={setSelectedNodeId}
+                                isFullscreen={false}
+                                onToggleFullscreen={() => setIsFullscreen(true)}
+                            />
                         </div>
 
                         {/* Node Details & Code Inspector Panel */}
-                        <div className="lg:col-span-4 panel-card p-6 flex flex-col justify-between">
+                        <div className="lg:col-span-4 panel-card p-6 flex flex-col justify-between h-[660px] overflow-hidden">
                             {selectedModel ? (
                                 <div className="space-y-4">
                                     <div>
@@ -592,6 +434,16 @@ export default function DbtPage() {
                                             }`}
                                         >
                                             {t("dbt.columns")} ({selectedModel.columns.length})
+                                        </button>
+                                        <button
+                                            onClick={() => setInspectorTab("dependencies")}
+                                            className={`pb-2 font-medium border-b-2 transition-colors ${
+                                                inspectorTab === "dependencies"
+                                                    ? "border-primary text-primary"
+                                                    : "border-transparent text-muted hover:text-foreground"
+                                            }`}
+                                        >
+                                            {t("dbt.dependsOn")}
                                         </button>
                                     </div>
 
@@ -660,6 +512,76 @@ export default function DbtPage() {
                                                     )}
                                                 </div>
                                             ))}
+                                        </div>
+                                    )}
+
+                                    {inspectorTab === "dependencies" && (
+                                        <div className="space-y-4 max-h-[260px] overflow-y-auto pr-1">
+                                            {/* Upstream Parents */}
+                                            <div className="space-y-1.5">
+                                                <span className="text-[11px] font-semibold text-blue-400 font-mono uppercase tracking-wider flex items-center gap-1">
+                                                    ▲ {t("dbt.upstream")} ({selectedModel.dependsOn.length})
+                                                </span>
+                                                {selectedModel.dependsOn.length === 0 ? (
+                                                    <p className="text-xs text-muted italic">No upstream sources</p>
+                                                ) : (
+                                                    <div className="space-y-1">
+                                                        {selectedModel.dependsOn.map((depId) => {
+                                                            const targetNode = dagNodes.find((n) => n.id === depId);
+                                                            return (
+                                                                <div
+                                                                    key={depId}
+                                                                    onClick={() => setSelectedNodeId(depId)}
+                                                                    className="p-2 rounded-lg bg-card/60 hover:bg-card border border-cardBorder cursor-pointer flex items-center justify-between text-xs transition-colors"
+                                                                >
+                                                                    <span className="font-mono text-foreground truncate">
+                                                                        {targetNode?.label || depId}
+                                                                    </span>
+                                                                    <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                                                                        targetNode?.layer === "bronze" ? "bg-amber-500/20 text-amber-400" : "bg-blue-500/20 text-blue-400"
+                                                                    }`}>
+                                                                        {targetNode?.layer || "parent"}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Downstream Children */}
+                                            <div className="space-y-1.5">
+                                                <span className="text-[11px] font-semibold text-emerald-400 font-mono uppercase tracking-wider flex items-center gap-1">
+                                                    ▼ {t("dbt.downstream")} ({dagEdges.filter((e) => e.source === selectedModel.id).length})
+                                                </span>
+                                                {dagEdges.filter((e) => e.source === selectedModel.id).length === 0 ? (
+                                                    <p className="text-xs text-muted italic">No downstream models</p>
+                                                ) : (
+                                                    <div className="space-y-1">
+                                                        {dagEdges
+                                                            .filter((e) => e.source === selectedModel.id)
+                                                            .map((edge) => {
+                                                                const targetNode = dagNodes.find((n) => n.id === edge.target);
+                                                                return (
+                                                                    <div
+                                                                        key={edge.id}
+                                                                        onClick={() => setSelectedNodeId(edge.target)}
+                                                                        className="p-2 rounded-lg bg-card/60 hover:bg-card border border-cardBorder cursor-pointer flex items-center justify-between text-xs transition-colors"
+                                                                    >
+                                                                        <span className="font-mono text-foreground truncate">
+                                                                            {targetNode?.label || edge.target}
+                                                                        </span>
+                                                                        <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                                                                            targetNode?.layer === "gold" ? "bg-emerald-500/20 text-emerald-400" : "bg-blue-500/20 text-blue-400"
+                                                                        }`}>
+                                                                            {targetNode?.layer || "child"}
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
 
@@ -896,6 +818,20 @@ export default function DbtPage() {
                     </div>
                 )}
             </main>
+
+            {/* Fullscreen Lineage Modal */}
+            {isFullscreen && (
+                <div className="fixed inset-0 z-50 bg-[#0b0e14] flex flex-col">
+                    <LineageGraph
+                        rawNodes={dagNodes}
+                        rawEdges={dagEdges}
+                        selectedNodeId={selectedNodeId}
+                        onSelectNode={setSelectedNodeId}
+                        isFullscreen={true}
+                        onToggleFullscreen={() => setIsFullscreen(false)}
+                    />
+                </div>
+            )}
         </div>
     );
 }

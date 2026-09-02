@@ -174,7 +174,15 @@ async function main() {
     });
 
     // 4. dbt Lakehouse Workspace
-    await capturePage("/dbt", "dbt.png");
+    await capturePage("/dbt", "dbt.png", async (p) => {
+        await p.waitForSelector(".react-flow", { timeout: 15000 });
+        await p.waitForTimeout(2000);
+        const node = p.locator('.react-flow__node:has-text("fct_event_summary")').first();
+        if (await node.isVisible()) {
+            await node.click();
+            await p.waitForTimeout(1000);
+        }
+    });
 
     await browser.close();
     console.log("✨ All target screenshots updated successfully!");

@@ -144,7 +144,7 @@ A unified web console built with Next.js 16 (Turbopack, TypeScript, Tailwind CSS
 </p>
 
 - **Overview** — pod health, restarts, memory/CPU usage, and one-click service restarts
-- **dbt Workspace & Lineage** — interactive DAG graph (Bronze → Silver → Gold), model inspector, Monaco SQL viewer, and run triggers
+- **dbt Workspace & Lineage** — enterprise React Flow DAG canvas with directional flow animations, Dagre hierarchical auto-layout, interactive minimap, focus mode, Monaco SQL editor, and Trino execution triggers
 - **Kafka** — KRaft cluster status, broker readiness, topics (partitions, replicas, configs, and conditions)
 - **Flink SQL** — interactive streaming workspace: topic explorer, Monaco SQL editor, job submission, and live status
 - **SQL IDE** — federated Trino queries with schema tree explorer across Iceberg and Kafka catalogs

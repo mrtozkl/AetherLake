@@ -99,10 +99,13 @@ Full reference: [Flink — Stream Processing](./components/flink).
 The **dbt** workspace (`/dbt`) provides visual management and monitoring for
 Lakehouse data transformations:
 
-- **Interactive Lineage DAG** — visual dependency graph spanning Bronze sources,
-  Silver curated tables, and Gold analytics marts with zoom/pan and dependency tracing.
+- **Interactive Lineage DAG** — scalable React Flow canvas spanning Bronze sources,
+  Silver curated tables, and Gold analytics marts with directional Bezier curves, arrowheads,
+  animated upstream (blue) and downstream (emerald) flow pulses, Dagre auto-layout,
+  interactive radar minimap, focus mode, and fullscreen view.
 - **Model Explorer & Inspector** — inspect model metadata, tags, partitioning specs,
   raw Jinja SQL, and compiled Trino SQL in an embedded Monaco editor.
+- **Dependencies Explorer** — inspect upstream parents and downstream children with clickable navigation.
 - **Data Quality & Tests** — review column-level schema definitions and assertions
   (`unique`, `not_null`, `accepted_values`).
 - **Run & Test Actions** — trigger `dbt run` and `dbt test` directly against the
