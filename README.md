@@ -127,6 +127,7 @@ kubectl get secret aetherlake-credentials -n aetherlake \
 
 Every host is also served over TLS with a self-signed CA (cert-manager);
 plain HTTP stays on because the SSO issuer URLs are `http://`.
+Resource metrics (`metrics-server` with `--kubelet-insecure-tls`) are automatically provisioned by `install.sh` for real-time CPU/RAM telemetry in the Control Panel.
 
 ---
 
@@ -135,12 +136,24 @@ plain HTTP stays on because the SSO issuer URLs are `http://`.
 A unified web console built with Next.js 16 (Turbopack, TypeScript, Tailwind CSS) providing centralized platform visibility and operations:
 
 <p align="center">
-  <img src="assets/dashboard.png" alt="Overview Dashboard" width="49%" />
-  <img src="assets/dbt.png" alt="dbt Lakehouse Workspace" width="49%" />
+  <img src="assets/dashboard.png" alt="Platform Overview Dashboard" width="49%" />
+  <img src="assets/observability.png" alt="Kubernetes Pod Observability & Live Logs" width="49%" />
 </p>
 <p align="center">
-  <img src="assets/flink.png" alt="Flink SQL Workspace" width="49%" />
-  <img src="assets/kafka.png" alt="Kafka Management" width="49%" />
+  <img src="assets/tables.png" alt="Apache Iceberg Tables & Live Data Preview" width="49%" />
+  <img src="assets/ide.png" alt="Distributed Trino SQL IDE" width="49%" />
+</p>
+<p align="center">
+  <img src="assets/kafka.png" alt="Apache Kafka Cluster & Topics" width="49%" />
+  <img src="assets/flink.png" alt="Apache Flink Streaming Studio" width="49%" />
+</p>
+<p align="center">
+  <img src="assets/polaris.png" alt="Apache Polaris REST Catalog Governance" width="49%" />
+  <img src="assets/trino.png" alt="Trino Analytics Query Engine" width="49%" />
+</p>
+<p align="center">
+  <img src="assets/dbt.png" alt="dbt Lakehouse Workspace & Lineage DAG" width="49%" />
+  <img src="assets/observability-details.png" alt="Live Pod Resource Metrics & Container Status" width="49%" />
 </p>
 
 - **Overview** — pod health, restarts, memory/CPU usage, and one-click service restarts

@@ -8,6 +8,8 @@ short-lived, scoped S3 credentials to query engines. It is a local subchart
 - **Catalog:** `lakehouse_catalog` (base location `s3://lakehouse/`)
 - **Realm:** `POLARIS` (Polaris-internal, distinct from the Keycloak realm)
 
+![Apache Polaris Management UI](/polaris.png)
+
 ## Architecture
 
 ```mermaid
@@ -154,3 +156,7 @@ CS=$(kubectl get secret open-lake-credentials -n aetherlake -o jsonpath='{.data.
 # POST grant_type=client_credentials&client_id=$CID&client_secret=$CS&scope=PRINCIPAL_ROLE:ALL
 #   → /api/catalog/v1/oauth/tokens, then GET /api/management/v1/catalogs
 ```
+
+Tables stored in Polaris namespaces can be visually browsed, inspected, and previewed with live data from the [Iceberg Tables Explorer](../control-panel#iceberg-tables-explorer-tables):
+
+![Iceberg Tables Explorer](/tables.png)

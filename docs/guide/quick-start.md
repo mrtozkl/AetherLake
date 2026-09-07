@@ -116,11 +116,11 @@ security add-trusted-cert -d -r trustRoot \
   -k ~/Library/Keychains/login.keychain-db aetherlake-ca.crt
 ```
 
-### 6. (Optional) Enable resource metrics
+### 6. Cluster resource metrics
 
-The Control Panel's [Observability](/guide/control-panel#observability) page shows
-per-pod CPU/RAM when [metrics-server](https://github.com/kubernetes-sigs/metrics-server)
-is installed. On Docker Desktop install it with `--kubelet-insecure-tls`:
+The installer (`install.sh`) automatically deploys and configures [metrics-server](https://github.com/kubernetes-sigs/metrics-server) (including `--kubelet-insecure-tls` for local clusters such as Docker Desktop), so per-pod CPU/RAM telemetry is immediately active on the Control Panel's [Observability](/guide/control-panel#observability) page.
+
+If you installed manually without `install.sh`, deploy it with:
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml

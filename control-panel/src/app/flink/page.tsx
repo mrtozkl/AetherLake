@@ -8,7 +8,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import Editor from "@monaco-editor/react";
 import {
     Waves, Trash2, RefreshCw, Loader2, AlertCircle, Check, X,
-    Eye, Upload, Radio, Play
+    Eye, Upload, Radio, Play, Search, Code2, Layers,
+    Activity, Cpu, Sparkles
 } from "lucide-react";
 
 interface FlinkJobSummary {
@@ -28,13 +29,11 @@ interface KafkaTopicSummary {
     ready: boolean;
 }
 
-// Starter script shown in the editor (mirrors pipelines/flink/examples/
-// datagen-to-kafka.sql): streams synthetic events into the Kafka topic
-// provisioned by the core-data-stack chart.
-const EXAMPLE_SQL = `-- Generate synthetic events and stream them to Kafka.
--- The 'events' topic is created by the Strimzi KafkaTopic shipped with the
--- core-data-stack chart.
-
+const STREAM_TEMPLATES = [
+    {
+        id: "datagen",
+        nameKey: "flink.templateDatagen" as const,
+        sql: `-- Synthetic Data Generator -> Kafka Stream
 CREATE TEMPORARY TABLE events_source (
   event_id     STRING,
   user_id      STRING,
@@ -62,7 +61,95 @@ CREATE TEMPORARY TABLE events_sink (
 );
 
 INSERT INTO events_sink SELECT * FROM events_source;
-`;
+`,
+    },
+    {
+        id: "iceberg",
+        nameKey: "flink.templateIceberg" as const,
+        sql: `-- Kafka Stream -> Apache Iceberg Table Ingestion
+CREATE TEMPORARY TABLE kafka_events (
+  event_id     STRING,
+  user_id      STRING,
+  event_type   STRING,
+  event_ts     TIMESTAMP(3),
+  WATERMARK FOR event_ts AS event_ts - INTERVAL '5' SECOND
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'events',
+  'properties.bootstrap.servers' = 'aetherlake-kafka-bootstrap:9092',
+  'format' = 'json',
+  'scan.startup.mode' = 'earliest-offset'
+);
+
+-- Streams records directly to iceberg catalog
+INSERT INTO iceberg.default.events
+SELECT event_id, user_id, event_type, event_ts
+FROM kafka_events;
+`,
+    },
+    {
+        id: "window",
+        nameKey: "flink.templateWindow" as const,
+        sql: `-- 1-Minute Tumbling Event-Time Window Aggregation
+CREATE TEMPORARY TABLE raw_orders (
+  order_id     STRING,
+  user_id      STRING,
+  amount       DOUBLE,
+  order_time   TIMESTAMP(3),
+  WATERMARK FOR order_time AS order_time - INTERVAL '5' SECOND
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'orders',
+  'properties.bootstrap.servers' = 'aetherlake-kafka-bootstrap:9092',
+  'format' = 'json'
+);
+
+SELECT
+  TUMBLE_START(order_time, INTERVAL '1' MINUTE) AS window_start,
+  TUMBLE_END(order_time, INTERVAL '1' MINUTE) AS window_end,
+  user_id,
+  COUNT(order_id) AS total_orders,
+  SUM(amount) AS total_revenue
+FROM raw_orders
+GROUP BY
+  TUMBLE(order_time, INTERVAL '1' MINUTE),
+  user_id;
+`,
+    },
+    {
+        id: "filter",
+        nameKey: "flink.templateFilter" as const,
+        sql: `-- Low-Latency Stream Filtering & Alert Routing
+CREATE TEMPORARY TABLE inbound_telemetry (
+  device_id    STRING,
+  temperature  DOUBLE,
+  status       STRING,
+  record_time  TIMESTAMP(3)
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'telemetry',
+  'properties.bootstrap.servers' = 'aetherlake-kafka-bootstrap:9092',
+  'format' = 'json'
+);
+
+CREATE TEMPORARY TABLE alerts_sink (
+  device_id    STRING,
+  temperature  DOUBLE,
+  alert_msg    STRING
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'alerts',
+  'properties.bootstrap.servers' = 'aetherlake-kafka-bootstrap:9092',
+  'format' = 'json'
+);
+
+INSERT INTO alerts_sink
+SELECT device_id, temperature, 'High Temperature Threshold Exceeded'
+FROM inbound_telemetry
+WHERE temperature > 85.0;
+`,
+    },
+];
 
 function stateBadgeClass(state: string): string {
     switch (state) {
@@ -96,6 +183,10 @@ export default function FlinkPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+
+    // Filter & search state
+    const [selectedFilter, setSelectedFilter] = useState("ALL");
+    const [topicSearch, setTopicSearch] = useState("");
 
     // Submit form state
     const [jobName, setJobName] = useState("");
@@ -150,6 +241,34 @@ export default function FlinkPage() {
     useEffect(() => {
         if (success) { const timer = setTimeout(() => setSuccess(null), 5000); return () => clearTimeout(timer); }
     }, [success]);
+
+    useEffect(() => {
+        const topicParam = new URLSearchParams(window.location.search).get("topic");
+        if (topicParam) {
+            setJobName(`stream-${topicParam}`);
+            setSql(`-- Real-time stream from Kafka topic '${topicParam}'
+CREATE TEMPORARY TABLE kafka_${topicParam} (
+  event_id     STRING,
+  payload      STRING,
+  event_time   TIMESTAMP(3),
+  WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
+) WITH (
+  'connector' = 'kafka',
+  'topic' = '${topicParam}',
+  'properties.bootstrap.servers' = 'aetherlake-kafka-bootstrap:9092',
+  'format' = 'json',
+  'scan.startup.mode' = 'earliest-offset'
+);
+
+SELECT * FROM kafka_${topicParam};
+`);
+        }
+    }, []);
+
+    const runningJobs = jobs.filter(j => j.state === "RUNNING").length;
+    const failedJobs = jobs.filter(j => ["FAILED", "FAILING"].includes(j.state)).length;
+    const filteredJobs = jobs.filter(j => selectedFilter === "ALL" || j.state === selectedFilter);
+    const filteredTopics = topics.filter(t => !topicSearch.trim() || t.name.toLowerCase().includes(topicSearch.toLowerCase()));
 
     const submitJob = async () => {
         if (!jobName.trim() || !sql.trim()) return;
@@ -219,151 +338,280 @@ CREATE TEMPORARY TABLE ${topic.name}_source (
     return (
         <div className="flex min-h-screen">
             <Sidebar />
-            <main className="ml-[var(--sidebar-width)] flex-1 p-4 flex gap-3 h-screen overflow-hidden">
-                {/* Kafka topic explorer (mirrors the query IDE data catalog) */}
-                <aside className="w-64 panel-card flex flex-col h-full overflow-hidden shrink-0">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-cardBorder">
-                        <div className="flex items-center gap-2">
-                            <Radio className="w-4 h-4 text-success" />
-                            <h2 className="text-sm font-semibold">{t("flink.kafkaTopics")}</h2>
+            <main className="ml-[var(--sidebar-width)] flex-1 p-4 flex flex-col h-screen overflow-hidden">
+                {/* Standardized Enterprise Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-cardBorder shrink-0">
+                    <div>
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                                <Waves className="w-4 h-4" />
+                            </div>
+                            <h1 className="text-lg font-semibold text-foreground tracking-tight">
+                                {t("flink.title")}
+                            </h1>
+                            <span className="badge badge-neutral text-[10px]">Flink K8s Operator</span>
                         </div>
-                        <button onClick={fetchTopics} className="btn-ghost p-1" title={t("common.refresh")}>
-                            <RefreshCw className={`w-3 h-3 ${topicsLoading ? "animate-spin" : ""}`} />
+                        <p className="text-xs text-muted mt-0.5">{t("flink.subtitle")}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => { fetchJobs(); fetchTopics(); }} className="btn-ghost text-xs">
+                            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> {t("common.refresh")}
                         </button>
                     </div>
-                    <div className="overflow-y-auto flex-1 px-3 py-2 space-y-0.5">
-                        {topicsLoading && topics.length === 0 ? (
-                            <div className="text-xs text-muted py-2 px-1">{t("flink.topicsLoading")}</div>
-                        ) : topics.length === 0 ? (
-                            <div className="text-xs text-muted py-2 px-1">{t("flink.noTopicsHint")}</div>
-                        ) : topics.map((topic) => (
-                            <div key={topic.name} onClick={() => insertTopicTemplate(topic)}
-                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-card-hover rounded cursor-pointer transition-colors group"
-                                title={t("flink.topicHint")}>
-                                <Radio className={`w-3.5 h-3.5 shrink-0 ${topic.ready ? "text-success" : "text-error"}`} />
-                                <span className="text-xs font-mono text-secondary group-hover:text-foreground truncate flex-1">{topic.name}</span>
-                                <span className="text-[10px] text-muted shrink-0">{topic.partitions}p</span>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="px-4 py-2.5 border-t border-cardBorder">
-                        <p className="text-[10px] text-muted leading-relaxed">{t("flink.topicHint")}</p>
-                    </div>
-                </aside>
+                </div>
 
-                {/* Editor + Jobs */}
-                <div className="flex-1 flex flex-col gap-3 overflow-hidden">
-                    {/* Alerts */}
-                    <AnimatePresence>
-                        {error && (
-                            <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="alert alert-error">
-                                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                                <div className="flex-1 text-sm">{error}</div>
-                                <button onClick={() => setError(null)} className="btn-ghost p-1"><X className="w-3.5 h-3.5" /></button>
-                            </motion.div>
-                        )}
-                        {success && (
-                            <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="alert alert-success">
-                                <Check className="w-4 h-4" /><span className="text-sm">{success}</span>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    {/* SQL Editor */}
-                    <div className="h-1/2 panel-card flex flex-col overflow-hidden">
-                        <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-cardBorder bg-surface flex-wrap">
-                            <span className="text-xs font-semibold uppercase text-muted tracking-wide">{t("flink.sqlEditor")}</span>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <input value={jobName} onChange={(e) => setJobName(e.target.value)}
-                                    className="input-field font-mono text-xs py-1.5 w-44" placeholder="my-kafka-etl" />
-                                <input type="number" min={1} max={32} value={parallelism}
-                                    onChange={(e) => setParallelism(Math.max(1, Math.min(32, Number(e.target.value) || 1)))}
-                                    className="input-field font-mono text-xs py-1.5 w-16" title={t("flink.parallelism")} />
-                                <button onClick={() => setSql(EXAMPLE_SQL)} className="btn-ghost text-xs py-1.5 px-2.5">
-                                    <Upload className="w-3 h-3" /> {t("flink.loadExample")}
-                                </button>
-                                <button onClick={submitJob} disabled={!jobName.trim() || !sql.trim() || submitting}
-                                    className="btn-primary text-xs py-1.5 px-3">
-                                    {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                                    {submitting ? t("flink.submitting") : t("flink.submit")}
-                                </button>
-                            </div>
+                {/* 4-Card Enterprise KPI Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 py-3 shrink-0">
+                    <div className="panel-card p-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-medium text-muted uppercase tracking-wider">{t("flink.totalJobs")}</span>
+                            <Layers className="w-3.5 h-3.5 text-muted/60" />
                         </div>
-                        <div className="flex-1 bg-[#1e1e1e]">
-                            <Editor height="100%" language="sql" theme="vs-dark" value={sql}
-                                onChange={(val) => setSql(val || "")}
-                                options={{
-                                    minimap: { enabled: false },
-                                    padding: { top: 12, bottom: 12 },
-                                    fontSize: 13,
-                                    fontFamily: "'Inter', ui-monospace, monospace",
-                                    scrollBeyondLastLine: false,
-                                    smoothScrolling: true,
-                                    placeholder: "-- Flink SQL statements (CREATE TABLE ... WITH ('connector' = 'kafka', ...); INSERT INTO ...;)",
-                                }} />
-                        </div>
+                        <p className="text-lg font-semibold font-mono text-foreground">{jobs.length}</p>
                     </div>
 
-                    {/* Jobs */}
-                    <div className="h-1/2 panel-card flex flex-col overflow-hidden">
-                        <div className="flex items-center justify-between px-4 py-2 border-b border-cardBorder bg-surface">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold uppercase text-muted tracking-wide">{t("flink.jobs")}</span>
-                                <span className="badge badge-neutral">{jobs.length}</span>
+                    <div className="panel-card p-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-medium text-muted uppercase tracking-wider">{t("flink.runningJobs")}</span>
+                            <span className={`status-dot ${runningJobs > 0 ? "status-dot-healthy" : "status-dot-pending"}`}></span>
+                        </div>
+                        <p className="text-lg font-semibold font-mono text-success">{runningJobs}</p>
+                    </div>
+
+                    <div className="panel-card p-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-medium text-muted uppercase tracking-wider">{t("flink.failedJobs")}</span>
+                            <Activity className="w-3.5 h-3.5 text-muted/60" />
+                        </div>
+                        <p className="text-lg font-semibold font-mono text-error">{failedJobs}</p>
+                    </div>
+
+                    <div className="panel-card p-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-medium text-muted uppercase tracking-wider">{t("flink.operatorMode")}</span>
+                            <Cpu className="w-3.5 h-3.5 text-primary" />
+                        </div>
+                        <p className="text-xs font-semibold text-foreground truncate">v1.10 · HA Native</p>
+                    </div>
+                </div>
+
+                {/* Work Area: Topics Sidebar + (Editor & Jobs) */}
+                <div className="flex-1 flex gap-3 min-h-0 overflow-hidden">
+                    {/* Kafka topic explorer */}
+                    <aside className="w-60 panel-card flex flex-col h-full overflow-hidden shrink-0">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-cardBorder bg-surface/40">
+                            <div className="flex items-center gap-1.5">
+                                <Radio className="w-3.5 h-3.5 text-success" />
+                                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">{t("flink.kafkaTopics")}</h2>
                             </div>
-                            <button onClick={() => fetchJobs()} className="btn-ghost p-1" title={t("common.refresh")}>
-                                <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+                            <button onClick={fetchTopics} className="btn-ghost p-1" title={t("common.refresh")}>
+                                <RefreshCw className={`w-3 h-3 ${topicsLoading ? "animate-spin" : ""}`} />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-auto">
-                            {loading && jobs.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-muted text-sm gap-2">
-                                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                                    {t("flink.loadingJobs")}
+
+                        {/* Search topics in sidebar */}
+                        <div className="p-2 border-b border-cardBorder bg-surface/20">
+                            <div className="relative">
+                                <Search className="w-3 h-3 text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                <input
+                                    value={topicSearch}
+                                    onChange={(e) => setTopicSearch(e.target.value)}
+                                    placeholder={t("flink.searchTopics")}
+                                    className="input-field text-xs py-1 pl-8 pr-6 w-full"
+                                />
+                                {topicSearch && (
+                                    <button onClick={() => setTopicSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground">
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1 px-2 py-1.5 space-y-0.5">
+                            {topicsLoading && topics.length === 0 ? (
+                                <div className="text-xs text-muted py-4 text-center">{t("flink.topicsLoading")}</div>
+                            ) : filteredTopics.length === 0 ? (
+                                <div className="text-xs text-muted py-4 text-center">{t("flink.noTopicsHint")}</div>
+                            ) : filteredTopics.map((topic) => (
+                                <div key={topic.name} onClick={() => insertTopicTemplate(topic)}
+                                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-card-hover rounded cursor-pointer transition-colors group"
+                                    title={t("flink.topicHint")}>
+                                    <Radio className={`w-3 h-3 shrink-0 ${topic.ready ? "text-success" : "text-error"}`} />
+                                    <span className="text-xs font-mono text-secondary group-hover:text-foreground truncate flex-1">{topic.name}</span>
+                                    <span className="text-[10px] text-muted shrink-0 font-mono">{topic.partitions}p</span>
                                 </div>
-                            ) : jobs.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-muted text-sm gap-2">
-                                    <Waves className="w-6 h-6" />
-                                    {t("flink.noJobs")}
-                                </div>
-                            ) : (
-                                <table className="data-table">
-                                    <thead className="sticky top-0">
-                                        <tr>
-                                            <th>{t("flink.jobName")}</th>
-                                            <th>{t("flink.state")}</th>
-                                            <th>{t("flink.parallelism")}</th>
-                                            <th>{t("flink.startTime")}</th>
-                                            <th>{t("flink.actions")}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {jobs.map((job) => (
-                                            <tr key={job.name}>
-                                                <td className="font-mono text-xs">{job.name}</td>
-                                                <td>
-                                                    <span className={`badge ${stateBadgeClass(job.state)}`}>{job.state}</span>
-                                                    {job.error && (
-                                                        <p className="text-[11px] text-error mt-1 max-w-[280px] truncate" title={job.error}>{job.error}</p>
-                                                    )}
-                                                </td>
-                                                <td>{job.parallelism}</td>
-                                                <td className="text-xs text-muted">{formatStartTime(job.startTime)}</td>
-                                                <td>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <button onClick={() => openSql(job.name)} className="btn-ghost p-1.5" title={t("flink.viewSql")}>
-                                                            <Eye className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <button onClick={() => cancelJob(job.name)} className="btn-danger p-1.5" title={t("flink.cancelJob")}>
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            ))}
+                        </div>
+                        <div className="px-3 py-2 border-t border-cardBorder bg-surface/20">
+                            <p className="text-[10px] text-muted leading-relaxed">{t("flink.topicHint")}</p>
+                        </div>
+                    </aside>
+
+                    {/* Editor + Jobs */}
+                    <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-hidden">
+                        {/* Alerts */}
+                        <AnimatePresence>
+                            {error && (
+                                <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="alert alert-error text-xs py-2">
+                                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                    <div className="flex-1">{error}</div>
+                                    <button onClick={() => setError(null)} className="btn-ghost p-1"><X className="w-3 h-3" /></button>
+                                </motion.div>
                             )}
+                            {success && (
+                                <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="alert alert-success text-xs py-2">
+                                    <Check className="w-3.5 h-3.5" /><span>{success}</span>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {/* SQL Editor */}
+                        <div className="h-[48%] panel-card flex flex-col overflow-hidden">
+                            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-cardBorder bg-surface flex-wrap">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold uppercase text-muted tracking-wide">{t("flink.sqlEditor")}</span>
+
+                                    {/* Template Selector Pills */}
+                                    <div className="hidden xl:flex items-center gap-1 ml-2">
+                                        {STREAM_TEMPLATES.map((tmpl) => (
+                                            <button
+                                                key={tmpl.id}
+                                                onClick={() => setSql(tmpl.sql)}
+                                                className="text-[10px] px-2 py-0.5 rounded bg-surface-hover hover:bg-primary/20 text-muted hover:text-foreground transition-colors border border-cardBorder font-medium"
+                                            >
+                                                {t(tmpl.nameKey)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <input
+                                        value={jobName}
+                                        onChange={(e) => setJobName(e.target.value)}
+                                        className="input-field font-mono text-xs py-1 w-36"
+                                        placeholder="my-kafka-etl"
+                                    />
+                                    <div className="flex items-center gap-1 bg-card px-2 py-0.5 rounded border border-cardBorder">
+                                        <span className="text-[10px] text-muted">p:</span>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={32}
+                                            value={parallelism}
+                                            onChange={(e) => setParallelism(Math.max(1, Math.min(32, Number(e.target.value) || 1)))}
+                                            className="w-8 bg-transparent font-mono text-xs text-foreground focus:outline-none"
+                                            title={t("flink.parallelism")}
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={submitJob}
+                                        disabled={!jobName.trim() || !sql.trim() || submitting}
+                                        className="btn-primary text-xs py-1 px-3 flex items-center gap-1.5"
+                                    >
+                                        {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                                        <span>{submitting ? t("flink.submitting") : t("flink.submit")}</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-1 bg-[#1e1e1e]">
+                                <Editor
+                                    height="100%"
+                                    language="sql"
+                                    theme="vs-dark"
+                                    value={sql}
+                                    onChange={(val) => setSql(val || "")}
+                                    options={{
+                                        minimap: { enabled: false },
+                                        padding: { top: 10, bottom: 10 },
+                                        fontSize: 12,
+                                        fontFamily: "'JetBrains Mono', 'Fira Code', 'Inter', ui-monospace, monospace",
+                                        scrollBeyondLastLine: false,
+                                        smoothScrolling: true,
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Jobs Panel */}
+                        <div className="h-[52%] panel-card flex flex-col overflow-hidden">
+                            <div className="px-3 py-2 border-b border-cardBorder bg-surface flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold uppercase text-muted tracking-wide">{t("flink.jobs")}</span>
+                                    <span className="badge badge-neutral text-[10px]">{filteredJobs.length}</span>
+                                </div>
+
+                                {/* Job State Filter Tabs */}
+                                <div className="flex items-center gap-1 overflow-x-auto">
+                                    {["ALL", "RUNNING", "SUSPENDED", "FAILED"].map((flt) => (
+                                        <button
+                                            key={flt}
+                                            onClick={() => setSelectedFilter(flt)}
+                                            className={`text-[10px] px-2 py-0.5 rounded transition-colors whitespace-nowrap ${
+                                                selectedFilter === flt
+                                                    ? "bg-primary text-white font-medium"
+                                                    : "text-muted hover:text-foreground bg-card border border-cardBorder"
+                                            }`}
+                                        >
+                                            {flt === "ALL" ? t("flink.filterAll") : flt}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-auto">
+                                {loading && jobs.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-muted text-xs gap-2">
+                                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                                        {t("flink.loadingJobs")}
+                                    </div>
+                                ) : filteredJobs.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-muted text-xs gap-2">
+                                        <Waves className="w-6 h-6 text-muted/40" />
+                                        {t("flink.noJobs")}
+                                    </div>
+                                ) : (
+                                    <table className="data-table">
+                                        <thead className="sticky top-0 bg-surface">
+                                            <tr>
+                                                <th>{t("flink.jobName")}</th>
+                                                <th>{t("flink.state")}</th>
+                                                <th>{t("flink.parallelism")}</th>
+                                                <th>{t("flink.startTime")}</th>
+                                                <th className="text-right">{t("flink.actions")}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredJobs.map((job) => (
+                                                <tr key={job.name}>
+                                                    <td className="font-mono text-xs font-medium text-foreground">{job.name}</td>
+                                                    <td>
+                                                        <span className={`badge ${stateBadgeClass(job.state)}`}>
+                                                            <span className={`status-dot ${job.state === "RUNNING" ? "status-dot-healthy" : "status-dot-pending"}`}></span>
+                                                            {job.state}
+                                                        </span>
+                                                        {job.error && (
+                                                            <p className="text-[10px] text-error mt-1 max-w-[260px] truncate font-mono" title={job.error}>{job.error}</p>
+                                                        )}
+                                                    </td>
+                                                    <td className="font-mono text-xs text-muted">{job.parallelism}</td>
+                                                    <td className="text-xs text-muted">{formatStartTime(job.startTime)}</td>
+                                                    <td className="text-right">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <button onClick={() => openSql(job.name)} className="btn-ghost p-1 text-xs" title={t("flink.viewSql")}>
+                                                                <Eye className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button onClick={() => cancelJob(job.name)} className="btn-danger p-1 text-xs" title={t("flink.cancelJob")}>
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

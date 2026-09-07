@@ -23,6 +23,21 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+if ! command -v openssl &> /dev/null; then
+    echo "❌ Error: openssl is not installed."
+    exit 1
+fi
+
+if ! command -v curl &> /dev/null; then
+    echo "❌ Error: curl is not installed."
+    exit 1
+fi
+
+if ! command -v tar &> /dev/null; then
+    echo "❌ Error: tar is not installed."
+    exit 1
+fi
+
 # 2. Create Namespace
 echo "📦 Creating aetherlake namespace..."
 kubectl create namespace aetherlake --dry-run=client -o yaml | kubectl apply -f -
@@ -170,7 +185,7 @@ ensure_secret_key() {
     if [ -z "$current" ]; then
         echo "   Adding missing key '$key' to $secret_name..."
         kubectl patch secret "$secret_name" -n aetherlake --type merge \
-            -p "{\"data\":{\"$key\":\"$(printf %s "$value" | base64)\"}}"
+            -p "{\"data\":{\"$key\":\"$(printf %s "$value" | base64 | tr -d '\r\n')\"}}"
     fi
 }
 
@@ -239,18 +254,29 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=keycloak -n aet
 echo "🌐 Adding CoreDNS rewrite for in-cluster keycloak.aetherlake.local..."
 KEYCLOAK_FQDN="security-stack-keycloak.aetherlake.svc.cluster.local"
 REWRITE_RULE="rewrite name keycloak.aetherlake.local ${KEYCLOAK_FQDN}"
-COREFILE="$(kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}')"
-if ! printf '%s' "$COREFILE" | grep -q "keycloak.aetherlake.local"; then
-    # Remove any stale open-lake hosts block and inject the rewrite after ".:53 {".
-    printf '%s' "$COREFILE" \
-        | sed '/10\.[0-9.]* keycloak\.open-lake\.local/d' \
-        | sed "s|^\\.:53 {|.:53 {\n    ${REWRITE_RULE}|" > /tmp/aetherlake-corefile
-    kubectl create configmap coredns -n kube-system --from-file=Corefile=/tmp/aetherlake-corefile \
-        --dry-run=client -o yaml | kubectl apply -f -
-    kubectl rollout restart deployment/coredns -n kube-system
-    kubectl rollout status deployment/coredns -n kube-system --timeout=60s || true
+COREFILE="$(kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}' 2>/dev/null || true)"
+if [ -n "$COREFILE" ]; then
+    if ! printf '%s' "$COREFILE" | grep -q "keycloak.aetherlake.local"; then
+        # Remove any stale open-lake hosts block and inject the rewrite after ".:53 {".
+        python3 - "$REWRITE_RULE" <<'PYEOF' > /tmp/aetherlake-corefile
+import sys, re
+corefile = sys.stdin.read()
+corefile = re.sub(r'10\.[0-9.]* keycloak\.open-lake\.local\n?', '', corefile)
+rule = sys.argv[1]
+if re.search(r'\.:53\s*\{', corefile):
+    corefile = re.sub(r'(\.:53\s*\{)', r'\1\n    ' + rule, corefile, count=1)
+sys.stdout.write(corefile)
+PYEOF
+        kubectl create configmap coredns -n kube-system --from-file=Corefile=/tmp/aetherlake-corefile \
+            --dry-run=client -o yaml | kubectl apply -f -
+        rm -f /tmp/aetherlake-corefile
+        kubectl rollout restart deployment/coredns -n kube-system
+        kubectl rollout status deployment/coredns -n kube-system --timeout=60s || true
+    else
+        echo "   CoreDNS rewrite already present. Skipping."
+    fi
 else
-    echo "   CoreDNS rewrite already present. Skipping."
+    echo "   ℹ️  CoreDNS ConfigMap not found in kube-system. Skipping rewrite."
 fi
 
 # 4c. Trino verifies Keycloak JWTs with the realm's RSA public key (mounted
@@ -261,23 +287,28 @@ fi
 # machine yet, hence the port-forward.
 echo "🔑 Fetching aetherlake realm public key for Trino JWT verification..."
 KEYCLOAK_ADMIN_PASSWORD_ACTUAL="$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.keycloak-admin-password}' | base64 -d)"
-kubectl port-forward -n aetherlake svc/security-stack-keycloak 18080:80 >/dev/null 2>&1 &
+KEYCLOAK_PF_PORT=18080
+if command -v lsof &>/dev/null && lsof -Pi :18080 -sTCP:LISTEN -t &>/dev/null; then
+    KEYCLOAK_PF_PORT=18081
+fi
+kubectl port-forward -n aetherlake svc/security-stack-keycloak "${KEYCLOAK_PF_PORT}:80" >/dev/null 2>&1 &
 KEYCLOAK_PF_PID=$!
-trap 'kill "$KEYCLOAK_PF_PID" 2>/dev/null || true' EXIT
+trap 'kill "$KEYCLOAK_PF_PID" 2>/dev/null || true' EXIT INT TERM
 for _ in $(seq 1 30); do
-    curl -sf http://localhost:18080/realms/aetherlake >/dev/null 2>&1 && break
+    curl -sf "http://localhost:${KEYCLOAK_PF_PORT}/realms/aetherlake" >/dev/null 2>&1 && break
     sleep 2
 done
-KC_ADMIN_TOKEN="$(curl -s -X POST http://localhost:18080/realms/master/protocol/openid-connect/token \
+KC_ADMIN_TOKEN="$(curl -s -X POST "http://localhost:${KEYCLOAK_PF_PORT}/realms/master/protocol/openid-connect/token" \
     -d "client_id=admin-cli" -d "username=admin" \
     -d "password=${KEYCLOAK_ADMIN_PASSWORD_ACTUAL}" -d "grant_type=password" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))')"
 if [ -z "$KC_ADMIN_TOKEN" ]; then
     echo "❌ Could not obtain a Keycloak admin token — needed to fetch the realm key for Trino JWT auth."
+    kill "$KEYCLOAK_PF_PID" 2>/dev/null || true
     exit 1
 fi
 REALM_PUBLIC_KEY="$(curl -s -H "Authorization: Bearer $KC_ADMIN_TOKEN" \
-    http://localhost:18080/admin/realms/aetherlake/keys \
+    "http://localhost:${KEYCLOAK_PF_PORT}/admin/realms/aetherlake/keys" \
     | python3 -c '
 import json, sys
 keys = json.load(sys.stdin)["keys"]
@@ -286,7 +317,7 @@ if not rsa:
     raise SystemExit("no active RS256 realm key found")
 print(rsa[0]["publicKey"])')"
 kill "$KEYCLOAK_PF_PID" 2>/dev/null || true
-trap - EXIT
+trap - EXIT INT TERM
 if [ -z "$REALM_PUBLIC_KEY" ]; then
     echo "❌ Failed to extract the realm RSA public key."
     exit 1
@@ -311,7 +342,7 @@ if ! kubectl get crd tenants.minio.min.io &> /dev/null; then
     helm upgrade --install minio-operator minio-operator/operator \
         --namespace minio-operator --create-namespace
     echo "⏳ Waiting for MinIO Operator to be ready..."
-    kubectl wait --for=condition=available deployment -l app.kubernetes.io/name=operator \
+    kubectl wait --for=condition=available deployment/minio-operator \
         -n minio-operator --timeout=300s || true
 else
     echo "🪣 MinIO Operator already present. Skipping."
@@ -361,6 +392,20 @@ mkdir -p control-panel/.ca
 printf '%s\n' "$AETHERLAKE_CA_CRT" > control-panel/.ca/aetherlake-ca.crt
 echo "   CA published: configmap aetherlake-ca + control-panel/.ca/aetherlake-ca.crt"
 
+# Generate or update control-panel/.env.local for local development
+ACTUAL_POLARIS_SECRET="${POLARIS_CLIENT_SECRET:-$(kubectl get secret aetherlake-credentials -n aetherlake -o jsonpath='{.data.polaris-client-secret}' 2>/dev/null | base64 -d || true)}"
+cat <<EOF > control-panel/.env.local
+# Local development overrides for the Control Panel (npm run dev).
+# Generated by install.sh from cluster credentials.
+TRINO_URL=https://localhost:8443
+POLARIS_URL=http://polaris.aetherlake.local
+POLARIS_CLIENT_ID=${POLARIS_CLIENT_ID}
+POLARIS_CLIENT_SECRET=${ACTUAL_POLARIS_SECRET}
+NEXTAUTH_SECRET=aetherlake-dev-secret-key-32-chars-long!
+NEXTAUTH_URL=http://localhost:3000
+EOF
+echo "   Local dev config generated: control-panel/.env.local"
+
 # 5c. Deploy Core Data Stack
 echo "📊 Deploying Core Data Stack..."
 cd helm-charts/core-data-stack
@@ -374,14 +419,30 @@ if ! kubectl get crd kafkas.kafka.strimzi.io &> /dev/null; then
     STRIMZI_CHART="$(ls charts/strimzi-kafka-operator-*.tgz 2>/dev/null | head -1)"
     if [ -n "$STRIMZI_CHART" ]; then
         echo "📦 Installing Strimzi CRDs from $STRIMZI_CHART..."
-        tar -xzOf "$STRIMZI_CHART" 'strimzi-kafka-operator/crds/*' | kubectl apply --server-side -f -
+        TMP_STRIMZI_DIR="$(mktemp -d /tmp/aetherlake-strimzi-crds.XXXXXX)"
+        tar -xzf "$STRIMZI_CHART" -C "$TMP_STRIMZI_DIR"
+        kubectl apply --server-side -f "$TMP_STRIMZI_DIR/strimzi-kafka-operator/crds/"
+        rm -rf "$TMP_STRIMZI_DIR"
     fi
 fi
 if ! kubectl get crd flinkdeployments.flink.apache.org &> /dev/null; then
     FLINK_OPERATOR_CHART="$(ls charts/flink-kubernetes-operator-*.tgz 2>/dev/null | head -1)"
     if [ -n "$FLINK_OPERATOR_CHART" ]; then
         echo "📦 Installing Flink operator CRDs from $FLINK_OPERATOR_CHART..."
-        tar -xzOf "$FLINK_OPERATOR_CHART" 'flink-kubernetes-operator/crds/*' | kubectl apply --server-side -f -
+        TMP_FLINK_DIR="$(mktemp -d /tmp/aetherlake-flink-crds.XXXXXX)"
+        tar -xzf "$FLINK_OPERATOR_CHART" -C "$TMP_FLINK_DIR"
+        kubectl apply --server-side -f "$TMP_FLINK_DIR/flink-kubernetes-operator/crds/"
+        rm -rf "$TMP_FLINK_DIR"
+    fi
+fi
+if ! kubectl get crd sparkapplications.sparkoperator.k8s.io &> /dev/null; then
+    SPARK_OPERATOR_CHART="$(ls charts/spark-operator-*.tgz 2>/dev/null | head -1)"
+    if [ -n "$SPARK_OPERATOR_CHART" ]; then
+        echo "📦 Installing Spark operator CRDs from $SPARK_OPERATOR_CHART..."
+        TMP_SPARK_DIR="$(mktemp -d /tmp/aetherlake-spark-crds.XXXXXX)"
+        tar -xzf "$SPARK_OPERATOR_CHART" -C "$TMP_SPARK_DIR"
+        kubectl apply --server-side -f "$TMP_SPARK_DIR/spark-operator/crds/"
+        rm -rf "$TMP_SPARK_DIR"
     fi
 fi
 # Pass the MinIO root credentials and OIDC client secret so the values baked into
@@ -465,6 +526,7 @@ TRINO_AUTH_VALUES="$(mktemp /tmp/aetherlake-trino-auth-values.XXXXXX)"
 # fails with a field-manager conflict on .spec.versions during fresh installs.
 helm upgrade --install core-data-stack . -n aetherlake \
     --skip-crds \
+    --timeout 15m \
     -f "$TRINO_AUTH_VALUES" \
     --set minio.rootUser="$MINIO_ROOT_USER_ACTUAL" \
     --set minio.rootPassword="$MINIO_ROOT_PASSWORD_ACTUAL" \
@@ -474,18 +536,142 @@ cd ../..
 
 # 5d. Build the Flink SQL runner image used by SQL jobs submitted from the
 # Control Panel (vendored in pipelines/flink/sql-runner). Only needed when the
-# flink component is enabled; Docker Desktop shares locally built images with
-# its Kubernetes cluster, so no registry push is required.
+# flink component is enabled.
 FLINK_ENABLED="$(awk '/^flink:/{f=1; next} f && /^[[:space:]]+enabled:/{print $2; exit}' helm-charts/core-data-stack/values.yaml)"
 if [ "$FLINK_ENABLED" = "true" ]; then
     if command -v docker &> /dev/null; then
         echo "🐳 Building Flink SQL runner image (aetherlake/flink-sql-runner:flink-2.1)..."
         docker build -t aetherlake/flink-sql-runner:flink-2.1 pipelines/flink/sql-runner
+        
+        # Distribute / import the locally built image across local Kubernetes runtimes
+        # 1. KinD
+        if command -v kind &>/dev/null && kind get clusters 2>/dev/null | grep -q .; then
+            echo "📥 Loading flink-sql-runner into KinD cluster..."
+            kind load docker-image aetherlake/flink-sql-runner:flink-2.1 2>/dev/null || true
+        fi
+        # 2. Minikube
+        if command -v minikube &>/dev/null && minikube status 2>/dev/null | grep -q "Running"; then
+            echo "📥 Loading flink-sql-runner into Minikube..."
+            minikube image load aetherlake/flink-sql-runner:flink-2.1 2>/dev/null || true
+        fi
+        # 3. K3d
+        if command -v k3d &>/dev/null && k3d cluster list 2>/dev/null | grep -q .; then
+            echo "📥 Loading flink-sql-runner into K3d cluster..."
+            k3d image import aetherlake/flink-sql-runner:flink-2.1 2>/dev/null || true
+        fi
+        # 4. Docker Desktop & containerd node containers (desktop-control-plane, kind-*, k3d-*)
+        for node in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '(desktop-control-plane|^kind-control-plane|^k3d-)'); do
+            echo "📥 Importing flink-sql-runner into node $node containerd..."
+            docker save aetherlake/flink-sql-runner:flink-2.1 | docker exec -i "$node" ctr -n k8s.io images import - >/dev/null 2>&1 || true
+        done
     else
         echo "⚠️  docker not found — skipping flink-sql-runner image build."
         echo "   Flink SQL jobs submitted from the Control Panel need it; build manually:"
         echo "   docker build -t aetherlake/flink-sql-runner:flink-2.1 pipelines/flink/sql-runner"
     fi
+fi
+
+# 5e. Demo Streaming Pipeline (Flink -> Kafka -> Iceberg)
+# When demoData and flink are both enabled, submit the synthetic data generation
+# job so Kafka and Flink views in the Control Panel are populated with live streaming data.
+DEMO_DATA_ENABLED="$(awk '/^demoData:/{f=1; next} f && /^[[:space:]]+enabled:/{print $2; exit}' helm-charts/core-data-stack/values.yaml)"
+if [ "$FLINK_ENABLED" = "true" ] && [ "$DEMO_DATA_ENABLED" = "true" ]; then
+    if [ -f "pipelines/flink/examples/datagen-to-kafka.sql" ]; then
+        echo "⏳ Waiting for Kafka broker and 'events' topic to be ready..."
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kafka -n aetherlake --timeout=180s || true
+        kubectl wait --for=condition=Ready kafkatopic/events -n aetherlake --timeout=180s || true
+
+        echo "🚀 Deploying demo streaming pipeline (datagen-to-kafka)..."
+        kubectl create configmap datagen-to-kafka-sql -n aetherlake \
+            --from-file=job.sql=pipelines/flink/examples/datagen-to-kafka.sql \
+            --dry-run=client -o yaml | kubectl apply -f -
+        cat <<'EOF' | kubectl apply -f -
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: datagen-to-kafka
+  namespace: aetherlake
+  labels:
+    aetherlake.io/flink-sql-job: "true"
+    app.kubernetes.io/managed-by: aetherlake-control-panel
+spec:
+  image: aetherlake/flink-sql-runner:flink-2.1
+  imagePullPolicy: IfNotPresent
+  flinkVersion: v2_1
+  serviceAccount: flink
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "1"
+    restart-strategy.type: fixed-delay
+    restart-strategy.fixed-delay.attempts: "10"
+    restart-strategy.fixed-delay.delay: "5s"
+  jobManager:
+    resource:
+      memory: "1024m"
+      cpu: 1
+  taskManager:
+    replicas: 1
+    resource:
+      memory: "2048m"
+      cpu: 1
+  podTemplate:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: datagen-to-kafka
+    spec:
+      containers:
+        - name: flink-main-container
+          volumeMounts:
+            - name: sql-script
+              mountPath: /opt/flink/sql
+      volumes:
+        - name: sql-script
+          configMap:
+            name: datagen-to-kafka-sql
+            items:
+              - key: job.sql
+                path: job.sql
+  job:
+    jarURI: "local:///opt/flink/usrlib/sql-runner.jar"
+    args: ["/opt/flink/sql/job.sql"]
+    parallelism: 1
+    upgradeMode: stateless
+    state: running
+EOF
+        echo "   Demo streaming pipeline datagen-to-kafka deployed."
+    fi
+fi
+
+# 5f. metrics-server — provides CPU and RAM metrics for the Control Panel's
+# Observability dashboard and kubectl top nodes/pods.
+IS_LOCAL="false"
+if kubectl get nodes -o wide 2>/dev/null | grep -qiE "(docker-desktop|minikube|kind|k3s|k3d|colima|microk8s|desktop-control-plane)"; then
+    IS_LOCAL="true"
+elif ! kubectl get nodes -o wide 2>/dev/null | grep -qiE "(eks|aks|gke|cloud)"; then
+    IS_LOCAL="true"
+fi
+
+if ! kubectl get deployment metrics-server -n kube-system &> /dev/null; then
+    echo "📈 Installing metrics-server for cluster observability..."
+    kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+    # On local clusters (Docker Desktop, Minikube, Kind), kubelet uses self-signed
+    # certs so metrics-server requires --kubelet-insecure-tls.
+    if [ "$IS_LOCAL" = "true" ]; then
+        kubectl patch deployment metrics-server -n kube-system --type=json \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' || true
+    fi
+    echo "⏳ Waiting for metrics-server to be ready..."
+    kubectl rollout status deployment/metrics-server -n kube-system --timeout=120s || true
+else
+    # Ensure --kubelet-insecure-tls is configured on local clusters with self-signed kubelet certs
+    if [ "$IS_LOCAL" = "true" ]; then
+        if ! kubectl get deployment metrics-server -n kube-system -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null | grep -q "kubelet-insecure-tls"; then
+            echo "📈 Patching metrics-server with --kubelet-insecure-tls..."
+            kubectl patch deployment metrics-server -n kube-system --type=json \
+                -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' || true
+        fi
+    fi
+    echo "📈 metrics-server already present. Skipping install."
 fi
 
 # 6. Ingress controller — required for the *.aetherlake.local ingress rules
@@ -558,8 +744,13 @@ echo ""
 echo "✅ AetherLake has been successfully deployed to Kubernetes!"
 echo ""
 echo "🚀 Next Steps:"
-echo "1. Ensure you have added the required DNS entries to your /etc/hosts file as described in the README."
-echo "2. Check pod status with: kubectl get pods -n aetherlake"
-echo "3. To start the Control Panel locally, run:"
+echo "1. Ensure you have added the required DNS entries to your /etc/hosts file:"
+echo "   127.0.0.1  minio.aetherlake.local trino.aetherlake.local polaris.aetherlake.local"
+echo "   127.0.0.1  keycloak.aetherlake.local airflow.aetherlake.local superset.aetherlake.local"
+echo "   127.0.0.1  milvus.aetherlake.local oauth2.aetherlake.local"
+echo "2. Check pod status with:"
+echo "   kubectl get pods -n aetherlake"
+echo "3. To run the Control Panel locally (connecting to cluster Trino & Polaris):"
+echo "   kubectl port-forward svc/core-data-stack-trino 8443:8443 -n aetherlake &"
 echo "   cd control-panel && npm install && npm run dev"
 echo ""

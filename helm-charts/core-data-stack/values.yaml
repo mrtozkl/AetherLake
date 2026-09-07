@@ -367,6 +367,9 @@ milvus:
 # 7. Apache Superset Configuration
 superset:
   enabled: true
+  image:
+    repository: "apache/superset"
+    tag: "3.1.2"
 
   # Use the shared, upstream-maintained PostgreSQL and Redis (templates/
   # shared-datastores.yaml) instead of the retired Bitnami subchart images.

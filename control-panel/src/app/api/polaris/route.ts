@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../lib/auth";
+import { getSecretKey } from "../../../trino";
 
-const POLARIS_URL = process.env.POLARIS_URL || "http://core-data-stack-polaris:8181";
-const CLIENT_ID = process.env.POLARIS_CLIENT_ID || "aetherlake-admin";
+const POLARIS_URL = process.env.POLARIS_URL || (process.env.NODE_ENV === "production" ? "http://core-data-stack-polaris:8181" : "http://polaris.aetherlake.local");
+const CLIENT_ID = process.env.POLARIS_CLIENT_ID || "open-lake-admin";
 // A hardcoded fallback secret must never reach a real deployment — require the
 // env var in production, allow the dev placeholder otherwise.
 const CLIENT_SECRET = process.env.POLARIS_CLIENT_SECRET
@@ -18,7 +19,9 @@ let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
 async function getBootstrapToken() {
-    if (!CLIENT_SECRET) {
+    const clientId = process.env.POLARIS_CLIENT_ID || (await getSecretKey("polaris-client-id")) || CLIENT_ID;
+    const clientSecret = process.env.POLARIS_CLIENT_SECRET || (await getSecretKey("polaris-client-secret")) || CLIENT_SECRET;
+    if (!clientSecret) {
         throw new Error("POLARIS_CLIENT_SECRET must be set in production");
     }
     if (cachedToken && Date.now() < tokenExpiry) {
@@ -29,7 +32,7 @@ async function getBootstrapToken() {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Authorization": `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64")}`,
+            "Authorization": `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
         },
         body: new URLSearchParams({
             grant_type: "client_credentials",

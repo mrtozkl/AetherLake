@@ -16,6 +16,8 @@ It is the query engine behind Superset and the Control Panel.
   clients verify the AetherLake CA (see below). There is no unauthenticated
   path to the query API.
 
+![Trino Management UI](/trino.png)
+
 ## Architecture
 
 ```mermaid
@@ -207,3 +209,5 @@ curl -s --cacert /tmp/aetherlake-ca.crt -o /dev/null -w '%{http_code}\n' \
 For multi-statement exploration (CREATE TABLE, INSERT, SELECT) use the
 [Control Panel SQL IDE](../control-panel#sql-ide) — it forwards your own
 Keycloak identity, so what you see there is exactly your permission slice.
+
+![Trino SQL IDE](/ide.png)

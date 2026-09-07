@@ -1,199 +1,189 @@
 # Control Panel
 
-The Control Panel is a **Next.js 16** web application that serves as the unified management interface for the entire platform.
+The Control Panel is a **Next.js 16** web application that serves as the unified management and analytics interface for the entire AetherLake platform. It provides a cohesive, enterprise-grade design system across all screens with real-time Kubernetes telemetry, distributed query interfaces, stream orchestration, and Iceberg metadata exploration.
 
 ![Control Panel — Platform Overview](/dashboard.png)
 
-## Features
+---
 
-- **Platform Overview** — Real-time pod status monitoring with auto-refresh; the Kafka card links straight to the Kafka view
-- **Kafka** — Cluster status/version, broker health, and topic details (partitions, replicas, config, reconciliation conditions)
-- **Flink SQL** — Write Flink SQL in a Monaco editor with a Kafka topic explorer, submit jobs, track and cancel them
-- **Observability** — Pod log viewer (live tail), Kubernetes events, and per-pod CPU/RAM metrics
-- **Iceberg Tables** — Browse Polaris namespaces, table schemas, partitions, and snapshot history
-- **Trino Management** — Create, delete, and configure SQL catalogs (Iceberg, Hive, PostgreSQL, MySQL)
-- **Polaris Management** — Manage Iceberg REST catalogs and namespaces
-- **SQL IDE** — Browser-based SQL editor with Monaco Editor, schema explorer, and query results
-- **Service Actions** — Restart services directly from the dashboard
-- **SSO Integration** — Keycloak OIDC and credentials-based authentication
-- **Internationalization** — English and Turkish support with runtime switching
+## 🏛️ Enterprise Design System & Core Features
 
-## Observability
+Every view in the Control Panel adheres to a standardized corporate format:
+- **Standardized Header**: Unified icon badge, title, subtitle badge, and real-time refresh action.
+- **4-Card KPI Metric Grid**: High-level operational metrics (health, active nodes, storage, throughput) displayed prominently above each view.
+- **Unified Filtering & Search**: Instant, debounced search bars and category filters across all explorer trees and data grids.
+- **Bilingual Support (i18n)**: Fully internationalized in English (`en`) and Turkish (`tr`) with runtime switching and zero layout shifts.
+- **Enterprise Security**: SSO integration with Keycloak OpenID Connect (OIDC), JWT role forwarding, and credentials-based fallback.
+
+---
+
+## 📊 Platform Overview (`/`)
+
+The **Platform Overview** acts as the central mission control dashboard:
+- **Cluster KPI Metrics**: Live summary cards showing Total Active Services, Overall Cluster Health %, Cloud/K8s Environment, and Telemetry connection status.
+- **Quick Launchpad**: One-click action cards to jump straight to the SQL IDE, Iceberg Explorer, Flink Studio, dbt Lineage, or Observability.
+- **Category Filter Pills**: Filter platform components instantly across `All`, `Lakehouse`, `Compute`, `Streaming`, and `Orchestration`.
+- **Instant Search**: Search services by name, description, or internal/external endpoints.
+- **Service Controls**: Trigger service restarts and view live pod phase indicators.
+
+---
+
+## ❄️ Iceberg Tables Explorer (`/tables`)
+
+![Iceberg table explorer](/tables.png)
+
+The **Iceberg Tables** page is a rich metadata and data inspection workbench connecting directly to the Apache Polaris Iceberg REST catalog:
+
+- **Namespace & Table Search**: Search bar in the catalog sidebar to instantly filter through namespaces and tables.
+- **One-Click Clipboard Actions**: Copy Table Reference (`iceberg.<ns>.<table>`) and S3 Storage Location directly to clipboard.
+- **4-Card Metric Grid**: Real-time snapshot statistics displaying Total Rows, Total Data Files, Total Table Size (formatted in bytes/MB/GB), Format Version, and Schema Column count.
+- **5-Tab Deep Inspector**:
+  1. **Overview**: Snapshot summary, file format, and table location.
+  2. **Schema**: Full column-level schema definitions with Iceberg types and nullability constraints.
+  3. **Partitions**: Partition specifications, transforms (e.g. `identity`, `bucket`, `hour`), and source columns.
+  4. **Snapshots**: Complete table commit history, operation types (`append`, `overwrite`), timestamp, and added rows.
+  5. **Data Preview**: **Live data querying** executing `SELECT * FROM iceberg.<ns>.<table> LIMIT 20` via Trino. Renders an interactive, scrollable data table with column type indicators, row counters, and error fallbacks.
+
+::: tip Demo dataset
+A fresh install seeds a small demo dataset — `iceberg.demo.events` (partitioned by `event_type`) and `iceberg.demo.users` — via a post-install hook, so this page and the SQL IDE have data immediately out of the box.
+:::
+
+---
+
+## ⚡ SQL IDE (`/query`)
+
+![SQL IDE](/ide.png)
+
+The **SQL IDE** provides a browser-based Monaco SQL editor integrated with Trino's distributed query engine:
+
+- **Role-Based Execution**: For Keycloak logins, the panel forwards your access token and Trino executes queries under your username. Role-based access control (RBAC) is enforced server-side.
+- **Schema & Table Search**: Real-time filter input in the data catalog explorer to instantly search through catalogs, schemas, and tables.
+- **Quick SQL Snippet Pills**: One-click insert pills for common queries (`SHOW CATALOGS`, `SHOW SCHEMAS`, `SHOW TABLES`, `LIMIT 50`).
+- **Execution Performance Stopwatch**: Measures exact query execution duration in milliseconds (e.g. `85 ms`) alongside row and column metrics.
+- **Persistent Query History**: Slide-over drawer persisting past executed queries in `localStorage` with execution status, query duration, timestamps, and one-click re-run capability.
+- **Data Export**:
+  - **Export CSV**: Download query result sets directly as `.csv` files.
+  - **Copy JSON**: Copy formatted JSON records directly to clipboard for API testing.
+
+---
+
+## 📡 Apache Kafka Management (`/kafka`)
+
+![Kafka management](/kafka.png)
+
+The **Kafka** page (`/kafka`) introspects Strimzi custom resources to manage event streams:
+
+- **Cluster KPI Grid**: 4-card overview displaying Cluster Status (`Ready`), Total Topic count, Total Partitions (calculated across all topics), and Online Broker ratio.
+- **Listeners & Endpoints Banner**: Displays internal plaintext (`aetherlake-kafka-bootstrap:9092`) and external endpoints with one-click copy buttons.
+- **Topic Search Filter**: Instant topic search filter bar.
+- **Deep-Link Shortcuts per Topic**:
+  - **Query in SQL IDE**: One-click shortcut that opens the SQL IDE pre-populated with `SELECT * FROM kafka."default"."<topic>" LIMIT 50;`.
+  - **Stream in Flink**: One-click shortcut that opens Flink Studio pre-populated with streaming table DDL and query for that topic.
+- **Topic Inspector**: Detailed table partition counts, replica counts, Strimzi reconciliation conditions, and topic configuration overrides.
+
+---
+
+## 🌊 Apache Flink Streaming Studio (`/flink`)
+
+![Flink SQL workspace](/flink.png)
+
+The **Flink** page (`/flink`) provides a full stream processing workspace backed by the Flink Kubernetes Operator:
+
+- **Stream Studio KPI Grid**: Total Jobs, Running Jobs (with live status dot), Failed/Suspended Jobs, and Operator Mode (`Flink K8s Operator v1.10 · HA Native`).
+- **Streaming SQL Template Selector**: Pre-packaged enterprise streaming templates ready to run:
+  1. **Datagen → Kafka**: Synthetic event stream generator for pipeline testing.
+  2. **Kafka → Iceberg Bridge**: Real-time event ingestion streaming directly into Apache Iceberg lakehouse tables.
+  3. **Tumbling Window Aggregation**: 1-minute event-time tumbling window aggregation computing counts and revenue metrics.
+  4. **Stream Filter & Routing**: Low-latency threshold filtering routing alerts to secondary Kafka topics.
+- **Kafka Topic Explorer Sidebar**: Searchable list of Kafka topics with partition counts. Clicking a topic appends a ready-to-run streaming table DDL into the editor.
+- **State Filter Tabs**: Instant filtering of submitted jobs across `All`, `RUNNING`, `SUSPENDED`, and `FAILED`.
+- **Job Lifecycle Management**: Track parallelism, start time, execution errors, view submitted SQL statements in a modal, or cancel running jobs.
+
+---
+
+## 🌐 Apache Polaris Management (`/polaris`)
+
+![Apache Polaris catalogs](/polaris.png)
+
+The **Polaris Management** page provides governance over the Apache Polaris REST Catalog:
+
+- **Polaris KPI Grid**: Configured Catalogs, Namespaces in Selected Catalog, Catalog REST URI, and Credential Vending status (`OAuth2 · RBAC Vended`).
+- **Catalog & Namespace Search**: Instant search filtering catalogs and namespaces.
+- **Explore in Tables**: Direct shortcut link on each namespace to explore its tables in `/tables`.
+- **Client Integration Snippets Tab**: Copy-paste integration snippets with one-click copy buttons for:
+  - **Trino**: `etc/catalog/iceberg.properties` REST catalog configuration.
+  - **Apache Spark**: PySpark `SparkSession` builder configuration for Polaris REST Catalog and S3FileIO.
+  - **PyIceberg**: Python client initialization using `pyiceberg.catalog.load_catalog`.
+- **Catalog & Namespace Creation**: Create internal REST catalogs with custom S3 warehouse paths and namespaces without CLI tools.
+
+---
+
+## ⚡ Trino Analytics Management (`/trino`)
+
+![Trino catalogs](/trino.png)
+
+The **Trino Management** page monitors and configures the distributed SQL query engine:
+
+- **Engine KPI Grid**: Configured Catalogs count, Active Worker Nodes, Coordinator Health Status (`HEALTHY`), and Architecture (`Distributed · Fault-Tolerant Execution`).
+- **Catalog Search Filter**: Search through configured catalogs by name or connector type (`iceberg`, `hive`, `postgresql`, `mysql`, `tpch`).
+- **Query in SQL IDE**: Every catalog row includes a direct shortcut button to open the SQL IDE configured to that catalog.
+- **Catalog Config Expander**: View raw catalog properties with sensitive secrets automatically masked (`••••••••`).
+- **Add Catalog Wizard**: Interactive modal supporting Iceberg REST, Hive Metastore, PostgreSQL, and MySQL connector templates.
+- **Trino Web Dashboard**: Embedded native Trino UI for viewing live worker threads, stage execution trees, and distributed query plans.
+
+---
+
+## 🩺 Observability & Logs (`/observability`)
 
 ![Observability — live pod logs](/observability.png)
 ![Observability — metrics & details](/observability-details.png)
 
-The **Observability** page surfaces cluster introspection for every service in the
-`aetherlake` namespace, without leaving the Control Panel:
+The **Observability** page provides comprehensive cluster diagnostics without leaving the Control Panel:
 
-- **Pod logs** — Select a pod (optionally filtered by service) and stream its logs
-  live (`follow`), or load a snapshot of the last *N* lines. Includes a container
-  selector, tail-line control, client-side search/filter, clear, and **download**
-  as a `.log` file.
-- **Events** — Recent Kubernetes events for the selected pod, newest first, with
-  `Warning` events highlighted.
-- **Details** — Per-pod container states, images, restart counts, node, pod IP,
-  and labels.
-- **Resource metrics** — Per-pod CPU and memory usage, shown live in the pod list
-  and the detail cards.
+- **Workload KPI Grid**: Total Pods, Healthy Pods, Degraded/Pending Pods, and Total Pod Restarts across the namespace.
+- **Pod Search Filter**: Instant search filter in the pod selection list to quickly isolate specific services or failed containers.
+- **Live Log Streamer**:
+  - Live log streaming (`follow=true`) using native browser `ReadableStream` chunk decoding.
+  - Auto-scroll lock to stay at the tail of incoming log streams.
+  - Client-side log text search highlighting.
+  - Container switcher for multi-container pods.
+  - Tail lines control (`100`, `500`, `1000`, `5000`).
+  - **Download**: Export complete log files (`.log`) with timestamps.
+- **Kubernetes Events**: Real-time Kubernetes events sorted chronologically with `Warning` events highlighted.
+- **Pod Resource Metrics**: Live CPU (millicores) and RAM (MiB/GiB) metrics from Kubernetes Metrics API.
 
-### Requirements
+---
 
-The CPU/RAM figures are read from the Kubernetes Metrics API, so the cluster needs
-[metrics-server](https://github.com/kubernetes-sigs/metrics-server) installed. On
-Docker Desktop the kubelet serving certificate is self-signed, so install it with
-the `--kubelet-insecure-tls` flag:
-
-```bash
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-kubectl patch deployment metrics-server -n kube-system --type=json \
-  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
-```
-
-The logs, events, and details still work without metrics-server — only the usage
-numbers are hidden, and the page shows a notice.
-
-## Kafka
-
-![Kafka management](/kafka.png)
-
-The **Kafka** page (`/kafka`) reads the Strimzi custom resources through
-`/api/kafka` and shows:
-
-- **Cluster status** — the `Kafka` CR state, Kafka version, and reconciliation
-  conditions reported by the Strimzi operator.
-- **Broker health** — the dual-role node pool (controller + broker) with pod
-  status.
-- **Topics** — every `KafkaTopic` with partitions, replicas, config and its
-  reconciliation conditions.
-
-See [Kafka — Streaming](./components/kafka) for the cluster itself and
-external (SCRAM-authenticated) access.
-
-## Flink SQL
-
-![Flink SQL workspace](/flink.png)
-
-The **Flink** page (`/flink`) is a workspace for Flink SQL jobs:
-
-- **Topic explorer** — lists Kafka topics; clicking one inserts a Kafka
-  source-table template into the editor.
-- **Monaco editor** — write the SQL (`SET` statements and
-  `EXECUTE STATEMENT SET` are supported).
-- **Submit** — creates a ConfigMap with the script plus one application-mode
-  `FlinkDeployment` (an isolated mini-cluster per job) using the
-  `aetherlake/flink-sql-runner:flink-2.1` image built by `install.sh`.
-- **Jobs list** — live status for every submitted job; cancelling deletes the
-  `FlinkDeployment` and its SQL ConfigMap.
-
-Ready-made scripts to try live in `pipelines/flink/examples/`
-(datagen → Kafka, Kafka → Iceberg lakehouse bridge, Kafka → print). Platform
-credentials (`POLARIS_CREDENTIAL`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`) are
-automatically injected into job pods and resolved via `${ENV:...}` placeholders.
-Full reference: [Flink — Stream Processing](./components/flink).
-
-## dbt Workspace & Lineage
+## 🔄 dbt Lakehouse Workspace & Lineage (`/dbt`)
 
 ![dbt Lakehouse Workspace](/dbt.png)
 
-The **dbt** workspace (`/dbt`) provides visual management and monitoring for
-Lakehouse data transformations:
+The **dbt** workspace (`/dbt`) provides visual management for Lakehouse data transformations:
 
-- **Interactive Lineage DAG** — scalable React Flow canvas spanning Bronze sources,
-  Silver curated tables, and Gold analytics marts with directional Bezier curves, arrowheads,
-  animated upstream (blue) and downstream (emerald) flow pulses, Dagre auto-layout,
-  interactive radar minimap, focus mode, and fullscreen view.
-- **Model Explorer & Inspector** — inspect model metadata, tags, partitioning specs,
-  raw Jinja SQL, and compiled Trino SQL in an embedded Monaco editor.
-- **Dependencies Explorer** — inspect upstream parents and downstream children with clickable navigation.
-- **Data Quality & Tests** — review column-level schema definitions and assertions
-  (`unique`, `not_null`, `accepted_values`).
-- **Run & Test Actions** — trigger `dbt run` and `dbt test` directly against the
-  Trino cluster and view live execution logs and durations.
+- **Interactive Lineage DAG**: Scalable React Flow canvas spanning Bronze sources, Silver curated tables, and Gold analytics marts with directional Bezier curves, arrowheads, animated flow pulses, Dagre auto-layout, interactive radar minimap, and fullscreen mode.
+- **Model Inspector**: Embedded Monaco editor inspecting raw Jinja SQL, compiled Trino SQL, partitioning specs, and model documentation.
+- **Dependencies Explorer**: Clickable upstream parent and downstream child navigation.
+- **Data Quality Assertions**: Review column-level schema definitions and dbt test validations (`unique`, `not_null`, `accepted_values`).
+- **Run & Test Triggers**: Trigger `dbt run` and `dbt test` against the Trino cluster and monitor live execution duration and logs.
 
-Full reference: [dbt — Data Transformations](./components/dbt).
+---
 
-## SQL IDE
+## 💻 Running Locally
 
-![SQL IDE](/ide.png)
-
-The **SQL IDE** is a browser-based SQL editor built on Monaco Editor, with a
-schema explorer for browsing catalogs, schemas, and tables, plus a results
-grid for query output. It talks to Trino directly, so any catalog Trino can
-see (Iceberg, Kafka, Hive, PostgreSQL, MySQL) is queryable from the same
-editor — including streamed data:
-
-```sql
-SELECT * FROM kafka.aetherlake.events LIMIT 10;
-```
-
-**Queries run as you, not as a shared app user.** For Keycloak logins the
-panel forwards your own access token and Trino executes the statement under
-your username (JWT verification); for the local dev login it authenticates as
-the matching dev user. The toolbar shows the identity ("Executed as …"), and
-Trino's role-based access control decides what you can do:
-
-- the schema explorer lists only catalogs/schemas/tables your role may touch
-  (`SHOW …` is filtered server-side);
-- `data-scientist` runs SELECTs but gets *Access Denied* on writes and the
-  `system` catalog; `data-engineer` can create/drop Iceberg tables;
-  `data-admin` has full access.
-
-All Trino calls go over TLS (port 8443); the panel verifies the AetherLake
-CA automatically — from `control-panel/.ca/aetherlake-ca.crt` locally (exported
-by `install.sh`) or from the `aetherlake-ca` ConfigMap in-cluster.
-
-See [Trino — Authentication & Authorization](./components/trino#authentication-every-query-runs-as-a-real-user).
-
-## Trino Management
-
-![Trino catalogs](/trino.png)
-
-The **Trino Management** page lists configured SQL catalogs and lets you
-create, delete, or reconfigure them (Iceberg, Hive, PostgreSQL, MySQL)
-without editing Helm values by hand.
-
-## Polaris Management
-
-![Apache Polaris catalogs](/polaris.png)
-
-The **Polaris Management** page lists and manages Iceberg REST catalogs and
-namespaces registered with Apache Polaris, including creating new catalogs
-straight from the UI.
-
-## Iceberg Tables
-
-![Iceberg table explorer](/tables.png)
-
-The **Iceberg Tables** page is a read-only explorer over the Polaris Iceberg REST
-catalog:
-
-- **Namespace / table tree** — Expand a namespace to list its tables.
-- **Overview** — Row count, data-file count, total size, and Iceberg format
-  version for the current snapshot.
-- **Schema** — Columns with their Iceberg types and required flags.
-- **Partitions** — Partition fields with their transform and source column.
-- **Snapshots** — Snapshot history (operation, added rows, commit time), with the
-  current snapshot flagged.
-- **Properties** — Raw table properties.
-
-It reads from Polaris via the bootstrap client credentials, so it works whether
-you signed in with Keycloak SSO or the local `admin` account.
-
-::: tip Demo dataset
-A fresh install seeds a small demo dataset — `iceberg.demo.events` (partitioned by
-`event_type`) and `iceberg.demo.users` — via a post-install hook, so this page and
-the SQL IDE have something to show out of the box. Disable it with
-`--set demoData.enabled=false`.
-:::
-
-## Running locally
-
-If you want to run the Control Panel locally outside of the Kubernetes cluster:
+To run the Control Panel locally in development mode outside of Kubernetes:
 
 ```bash
 cd control-panel
 npm install
 npm run dev
-# -> http://localhost:3000
+# Starts on http://localhost:3000
 ```
+
+To run linting and compile production builds:
+
+```bash
+cd control-panel
+npm run lint
+npm run build
+```
+

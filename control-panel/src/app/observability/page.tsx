@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useLocale } from "../locale-provider";
 import Sidebar from "../components/Sidebar";
 import {
     Activity, RefreshCw, Loader2, ScrollText, AlertTriangle,
     Box, Cpu, MemoryStick, Server, Download, Trash2, Play, Pause,
-    Search, ChevronDown, Info, ListTree, Circle
+    Search, ChevronDown, Info, ListTree, Circle, CheckCircle2,
+    X, RotateCw
 } from "lucide-react";
 
 const SERVICES = [
@@ -77,6 +78,7 @@ export default function ObservabilityPage() {
     const [timestamps, setTimestamps] = useState(false);
     const [logText, setLogText] = useState("");
     const [logSearch, setLogSearch] = useState("");
+    const [podSearch, setPodSearch] = useState("");
     const [logLoading, setLogLoading] = useState(false);
     const logBoxRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -205,6 +207,16 @@ export default function ObservabilityPage() {
         ? logText.split("\n").filter((l) => l.toLowerCase().includes(logSearch.toLowerCase())).join("\n")
         : logText;
 
+    const runningPods = pods.filter((p) => healthy(p)).length;
+    const unhealthyPods = pods.filter((p) => !healthy(p)).length;
+    const totalRestarts = pods.reduce((acc, p) => acc + p.restarts, 0);
+
+    const filteredPods = useMemo(() => {
+        if (!podSearch.trim()) return pods;
+        const q = podSearch.toLowerCase();
+        return pods.filter((p) => p.name.toLowerCase().includes(q) || p.phase.toLowerCase().includes(q));
+    }, [pods, podSearch]);
+
     if (status === "loading") {
         return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
     }
@@ -213,13 +225,19 @@ export default function ObservabilityPage() {
         <div className="flex min-h-screen">
             <Sidebar />
             <main className="ml-[var(--sidebar-width)] flex-1 p-8 max-w-[1400px]">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6">
+                {/* Standardized Enterprise Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-cardBorder">
                     <div>
-                        <h1 className="text-xl font-semibold text-foreground flex items-center gap-2">
-                            <Activity className="w-5 h-5 text-primary" /> {t("obs.title")}
-                        </h1>
-                        <p className="text-sm text-muted mt-0.5">{t("obs.subtitle")}</p>
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                                <Activity className="w-4 h-4" />
+                            </div>
+                            <h1 className="text-lg font-semibold text-foreground tracking-tight">
+                                {t("obs.title")}
+                            </h1>
+                            <span className="badge badge-neutral text-[10px]">Kubernetes Workloads</span>
+                        </div>
+                        <p className="text-xs text-muted mt-1">{t("obs.subtitle")}</p>
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Service filter */}
@@ -243,9 +261,56 @@ export default function ObservabilityPage() {
                                 </div>
                             )}
                         </div>
-                        <button onClick={fetchPods} className="btn-ghost">
+                        <button onClick={fetchPods} className="btn-ghost text-xs">
                             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> {t("common.refresh")}
                         </button>
+                    </div>
+                </div>
+
+                {/* Standardized 4-Card Enterprise KPI Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                    <div className="panel-card p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider">{t("obs.pods")}</span>
+                            <Box className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-xl font-semibold text-foreground font-mono">{pods.length}</p>
+                            <span className="text-xs text-muted">total pods</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-card p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider">Healthy</span>
+                            <span className="status-dot status-dot-healthy"></span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-xl font-semibold text-success font-mono">{runningPods}</p>
+                            <span className="text-xs text-muted">running</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-card p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider">Warning / Failed</span>
+                            <span className={`status-dot ${unhealthyPods > 0 ? "status-dot-failed" : "status-dot-healthy"}`}></span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className={`text-xl font-semibold font-mono ${unhealthyPods > 0 ? "text-warning" : "text-foreground"}`}>{unhealthyPods}</p>
+                            <span className="text-xs text-muted">degraded</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-card p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider">Restarts</span>
+                            <RotateCw className="w-4 h-4 text-accent" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-xl font-semibold text-foreground font-mono">{totalRestarts}</p>
+                            <span className="text-xs text-muted">total restarts</span>
+                        </div>
                     </div>
                 </div>
 
@@ -257,22 +322,43 @@ export default function ObservabilityPage() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4">
                     {/* Pod list */}
-                    <div className="panel-card overflow-hidden self-start">
+                    <div className="panel-card overflow-hidden self-start flex flex-col">
                         <div className="px-4 py-3 border-b border-cardBorder flex items-center justify-between">
-                            <h2 className="text-sm font-semibold flex items-center gap-2"><Box className="w-4 h-4 text-muted" /> {t("obs.pods")}</h2>
-                            <span className="badge badge-neutral">{pods.length}</span>
+                            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-2">
+                                <Box className="w-3.5 h-3.5 text-primary" /> {t("obs.pods")}
+                            </h2>
+                            <span className="badge badge-neutral text-[10px]">{filteredPods.length}</span>
                         </div>
-                        <div className="max-h-[calc(100vh-220px)] overflow-y-auto">
+
+                        {/* Search input for pods */}
+                        <div className="p-2 border-b border-cardBorder bg-surface/30">
+                            <div className="relative">
+                                <Search className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                <input
+                                    value={podSearch}
+                                    onChange={(e) => setPodSearch(e.target.value)}
+                                    placeholder={t("obs.searchPods")}
+                                    className="input-field text-xs py-1 pl-8 pr-6 w-full"
+                                />
+                                {podSearch && (
+                                    <button onClick={() => setPodSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground">
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="max-h-[calc(100vh-320px)] overflow-y-auto">
                             {loading && pods.length === 0 ? (
                                 <div className="p-8 text-center"><Loader2 className="w-5 h-5 animate-spin text-primary mx-auto mb-2" /><p className="text-xs text-muted">{t("obs.loadingPods")}</p></div>
-                            ) : pods.length === 0 ? (
+                            ) : filteredPods.length === 0 ? (
                                 <div className="p-8 text-center text-xs text-muted">{t("obs.noPods")}</div>
-                            ) : pods.map((p) => (
+                            ) : filteredPods.map((p) => (
                                 <button key={p.name} onClick={() => { setSelected(p.name); setTab("logs"); }}
                                     className={`w-full text-left px-4 py-2.5 border-b border-cardBorder/50 hover:bg-card-hover transition-colors ${selected === p.name ? "bg-card-hover" : ""}`}>
                                     <div className="flex items-center gap-2">
                                         <Circle className={`w-2 h-2 shrink-0 fill-current ${phaseColor(p)}`} />
-                                        <span className="text-xs font-medium text-foreground truncate flex-1">{p.name}</span>
+                                        <span className="text-xs font-mono font-medium text-foreground truncate flex-1">{p.name}</span>
                                     </div>
                                     <div className="flex items-center gap-3 mt-1 pl-4 text-[11px] text-muted">
                                         <span>{p.ready}/{p.total}</span>
@@ -429,7 +515,7 @@ export default function ObservabilityPage() {
                                             </div>
                                         </div>
 
-                                        {Object.keys(selectedPod.labels).length > 0 && (
+                                        {selectedPod.labels && Object.keys(selectedPod.labels).length > 0 && (
                                             <div>
                                                 <h4 className="text-xs font-semibold uppercase text-muted mb-2">{t("obs.labels")}</h4>
                                                 <div className="flex flex-wrap gap-1.5">

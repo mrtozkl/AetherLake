@@ -198,6 +198,9 @@ export async function POST(req: NextRequest) {
                             // One task slot per parallelism unit on the single
                             // TaskManager keeps the mini-cluster self-contained.
                             "taskmanager.numberOfTaskSlots": String(parallelism),
+                            "restart-strategy.type": "fixed-delay",
+                            "restart-strategy.fixed-delay.attempts": "10",
+                            "restart-strategy.fixed-delay.delay": "5s",
                         },
                         jobManager: {
                             resource: { memory: JOB_MANAGER_MEMORY, cpu: 1 },

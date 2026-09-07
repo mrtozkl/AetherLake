@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useLocale } from "../locale-provider";
 import Sidebar from "../components/Sidebar";
@@ -9,7 +9,8 @@ import {
     Database, Plus, Trash2, RefreshCw, Settings2,
     Loader2, AlertCircle, Check, X,
     LayoutDashboard, Link2, Server, Cpu, HardDrive,
-    ChevronDown, ExternalLink, Plug
+    ChevronDown, ExternalLink, Plug, Search, Code2,
+    Zap, Activity
 } from "lucide-react";
 
 type Tab = "catalogs" | "add-connection" | "config" | "dashboard";
@@ -18,6 +19,7 @@ interface CatalogEntry {
     name: string;
     connector: string;
     properties: Record<string, string>;
+    type?: string;
 }
 
 const CONNECTOR_TEMPLATES: Record<string, { label: string; fields: { key: string; label: string; placeholder: string; secret?: boolean; required?: boolean }[] }> = {
@@ -166,6 +168,14 @@ export default function TrinoPage() {
     useEffect(() => { if (status === "authenticated") { fetchCatalogs(); fetchClusterInfo(); } }, [status, fetchCatalogs, fetchClusterInfo]);
     useEffect(() => { if (success) { const t = setTimeout(() => setSuccess(null), 5000); return () => clearTimeout(t); } }, [success]);
 
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const filteredCatalogs = useMemo(() => {
+        if (!searchQuery.trim()) return catalogs;
+        const q = searchQuery.toLowerCase();
+        return catalogs.filter(c => c.name.toLowerCase().includes(q) || c.connector.toLowerCase().includes(q));
+    }, [catalogs, searchQuery]);
+
     if (status === "loading") {
         return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
     }
@@ -180,16 +190,71 @@ export default function TrinoPage() {
     return (
         <div className="flex min-h-screen">
             <Sidebar />
-            <main className="ml-[var(--sidebar-width)] flex-1 p-8 max-w-[1100px]">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6">
+            <main className="ml-[var(--sidebar-width)] flex-1 p-8 max-w-[1200px]">
+                {/* Standardized Enterprise Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-cardBorder">
                     <div>
-                        <h1 className="text-xl font-semibold text-foreground">{t("trino.title")}</h1>
-                        <p className="text-sm text-muted mt-0.5">{t("trino.subtitle")}</p>
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                                <Zap className="w-4 h-4" />
+                            </div>
+                            <h1 className="text-lg font-semibold text-foreground tracking-tight">
+                                {t("trino.title")}
+                            </h1>
+                            <span className="badge badge-neutral text-[10px]">Trino v450+</span>
+                        </div>
+                        <p className="text-xs text-muted mt-1">{t("trino.subtitle")}</p>
                     </div>
-                    <button onClick={() => { fetchCatalogs(); fetchClusterInfo(); }} className="btn-ghost">
-                        <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> {t("common.refresh")}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => { fetchCatalogs(); fetchClusterInfo(); }} className="btn-ghost text-xs">
+                            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> {t("common.refresh")}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Standardized 4-Card Enterprise KPI Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                    <div className="panel-card p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider">{t("trino.catalogs")}</span>
+                            <Database className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-xl font-semibold text-foreground font-mono">{catalogs.length}</p>
+                            <span className="text-xs text-muted">configured</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-card p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider">{t("trino.workers")}</span>
+                            <Server className="w-4 h-4 text-success" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-xl font-semibold text-foreground font-mono">{clusterInfo?.data?.length || 1}</p>
+                            <span className="text-xs text-muted">active nodes</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-card p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider">Coordinator</span>
+                            <span className="status-dot status-dot-healthy"></span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <span className="badge badge-success text-xs">HEALTHY</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-card p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider">Engine</span>
+                            <Cpu className="w-4 h-4 text-accent" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-xs font-mono text-foreground truncate">Distributed · FTE</p>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Alerts */}
@@ -221,10 +286,34 @@ export default function TrinoPage() {
                 {/* Tab: Catalogs */}
                 {activeTab === "catalogs" && (
                     <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-sm font-semibold">{t("trino.catalogs")}</h2>
-                            <span className="badge badge-neutral">{catalogs.length} {t("trino.catalogCount")}</span>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">{t("trino.catalogs")}</h2>
+                                <span className="badge badge-neutral text-[10px]">{catalogs.length}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <div className="relative min-w-[200px]">
+                                    <Search className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder={t("trino.searchCatalogs")}
+                                        className="input-field text-xs py-1 pl-8 pr-6 w-full"
+                                    />
+                                    {searchQuery && (
+                                        <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground">
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <button onClick={() => setActiveTab("add-connection")} className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1.5">
+                                    <Plus className="w-3.5 h-3.5" /> {t("trino.addConnection")}
+                                </button>
+                            </div>
                         </div>
+
                         {loading && catalogs.length === 0 ? (
                             <div className="panel-card p-12 text-center">
                                 <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-3" />
@@ -238,28 +327,41 @@ export default function TrinoPage() {
                                     <Plus className="w-4 h-4" /> {t("trino.addConnection")}
                                 </button>
                             </div>
+                        ) : filteredCatalogs.length === 0 ? (
+                            <div className="panel-card p-8 text-center text-xs text-muted">
+                                {t("home.noServicesFound")}
+                            </div>
                         ) : (
                             <div className="space-y-2">
-                                {catalogs.map((cat) => (
+                                {filteredCatalogs.map((cat) => (
                                     <div key={cat.name} className="panel-card overflow-hidden">
                                         <div className="px-4 py-3 flex items-center justify-between group">
                                             <div className="flex items-center gap-3 cursor-pointer flex-1"
                                                 onClick={() => setExpandedCatalog(expandedCatalog === cat.name ? null : cat.name)}>
-                                                {connectorIcon(cat.connector)}
+                                                {connectorIcon(cat.connector || cat.type)}
                                                 <div className="flex-1 min-w-0">
-                                                    <h3 className="text-sm font-medium text-foreground">{cat.name}</h3>
+                                                    <h3 className="text-sm font-semibold font-mono text-foreground">{cat.name}</h3>
                                                     <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className="text-[11px] text-muted font-mono bg-surface px-1.5 py-0.5 rounded">{cat.connector}</span>
-                                                        {cat.properties["s3.endpoint"] && <span className="text-[11px] text-muted truncate">{cat.properties["s3.endpoint"]}</span>}
-                                                        {cat.properties["connection-url"] && <span className="text-[11px] text-muted truncate">{cat.properties["connection-url"]}</span>}
+                                                        <span className="text-[10px] text-muted font-mono bg-surface px-1.5 py-0.5 rounded border border-cardBorder">{cat.connector || cat.type}</span>
+                                                        {cat.properties["s3.endpoint"] && <span className="text-[11px] text-muted truncate font-mono">{cat.properties["s3.endpoint"]}</span>}
+                                                        {cat.properties["connection-url"] && <span className="text-[11px] text-muted truncate font-mono">{cat.properties["connection-url"]}</span>}
                                                     </div>
                                                 </div>
                                                 <ChevronDown className={`w-4 h-4 text-muted transition-transform ${expandedCatalog === cat.name ? "rotate-180" : ""}`} />
                                             </div>
-                                            <button onClick={(e) => { e.stopPropagation(); deleteCatalog(cat.name); }}
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity btn-danger ml-2">
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
+                                            <div className="flex items-center gap-2 ml-3">
+                                                <a
+                                                    href={`/query?catalog=${encodeURIComponent(cat.name)}`}
+                                                    className="btn-ghost text-xs py-1 px-2.5 flex items-center gap-1 text-primary"
+                                                >
+                                                    <Code2 className="w-3 h-3" />
+                                                    <span>{t("trino.queryInIde")}</span>
+                                                </a>
+                                                <button onClick={(e) => { e.stopPropagation(); deleteCatalog(cat.name); }}
+                                                    className="opacity-0 group-hover:opacity-100 transition-opacity btn-danger text-xs p-1.5">
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
                                         </div>
                                         <AnimatePresence>
                                             {expandedCatalog === cat.name && (
@@ -268,8 +370,8 @@ export default function TrinoPage() {
                                                     <div className="px-4 pb-3">
                                                         <div className="bg-surface rounded-md border border-cardBorder p-3 space-y-1.5">
                                                             {Object.entries(cat.properties).map(([key, val]) => (
-                                                                <div key={key} className="flex items-center justify-between text-xs">
-                                                                    <code className="text-primary/80">{key}</code>
+                                                                <div key={key} className="flex items-center justify-between text-xs font-mono">
+                                                                    <code className="text-primary/90">{key}</code>
                                                                     <code className="text-muted bg-card px-2 py-0.5 rounded max-w-[50%] truncate">
                                                                         {key.toLowerCase().includes("password") || key.toLowerCase().includes("secret") ? "••••••••" : val}
                                                                     </code>

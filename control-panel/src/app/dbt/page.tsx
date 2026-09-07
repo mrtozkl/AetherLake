@@ -63,7 +63,7 @@ export default function DbtPage() {
         try {
             const res = await fetch("/api/dbt");
             if (!res.ok) {
-                const err = await res.json();
+                const err = await res.json().catch(() => ({ error: `HTTP ${res.status}: ${res.statusText}` }));
                 throw new Error(err.error || "Failed to fetch dbt project metadata");
             }
             const data = await res.json();

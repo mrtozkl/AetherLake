@@ -8,55 +8,57 @@ import {
     Database, Activity, Archive, Search, Network, Code2,
     ShieldCheck, LogIn, RefreshCw, Key, ExternalLink,
     ArrowUpRight, Globe, BarChart3, Radio, Waves, GitFork,
-    Cloud, Server, Wifi, Send, CheckCircle2
+    Cloud, Server, Send, CheckCircle2, LayoutDashboard,
+    Layers, X
 } from "lucide-react";
 
 const SERVICES = [
     {
         nameKey: "ext.minio" as const,
         descKey: "ext.minioDesc" as const,
+        categoryKey: "home.catLakehouse" as const,
+        category: "lakehouse",
+        endpoint: "minio-hl:9000",
         icon: Archive,
         iconColor: "text-primary",
         url: "http://minio.aetherlake.local",
     },
     {
-        nameKey: "ext.trino" as const,
-        descKey: "ext.trinoDesc" as const,
-        icon: Database,
-        iconColor: "text-accent",
-        url: "/trino",
-    },
-    {
-        nameKey: "ext.airflow" as const,
-        descKey: "ext.airflowDesc" as const,
-        icon: Activity,
-        iconColor: "text-warning",
-        url: "http://airflow.aetherlake.local",
-    },
-    {
-        nameKey: "ext.superset" as const,
-        descKey: "ext.supersetDesc" as const,
-        icon: BarChart3,
-        iconColor: "text-accent",
-        url: "http://superset.aetherlake.local",
-    },
-    {
-        nameKey: "ext.milvus" as const,
-        descKey: "ext.milvusDesc" as const,
-        icon: Search,
-        iconColor: "text-success",
-        url: "http://milvus.aetherlake.local",
-    },
-    {
         nameKey: "ext.polaris" as const,
         descKey: "ext.polarisDesc" as const,
+        categoryKey: "home.catLakehouse" as const,
+        category: "lakehouse",
+        endpoint: "polaris:8181",
         icon: Network,
         iconColor: "text-warning",
         url: "/polaris",
     },
     {
+        nameKey: "ext.trino" as const,
+        descKey: "ext.trinoDesc" as const,
+        categoryKey: "home.catCompute" as const,
+        category: "compute",
+        endpoint: "trino:8443",
+        icon: Database,
+        iconColor: "text-accent",
+        url: "/trino",
+    },
+    {
+        nameKey: "ext.milvus" as const,
+        descKey: "ext.milvusDesc" as const,
+        categoryKey: "home.catCompute" as const,
+        category: "compute",
+        endpoint: "milvus:19530",
+        icon: Search,
+        iconColor: "text-success",
+        url: "http://milvus.aetherlake.local",
+    },
+    {
         nameKey: "ext.kafka" as const,
         descKey: "ext.kafkaDesc" as const,
+        categoryKey: "home.catStreaming" as const,
+        category: "streaming",
+        endpoint: "kafka-bootstrap:9092",
         icon: Radio,
         iconColor: "text-success",
         url: "/kafka",
@@ -64,9 +66,78 @@ const SERVICES = [
     {
         nameKey: "ext.flink" as const,
         descKey: "ext.flinkDesc" as const,
+        categoryKey: "home.catStreaming" as const,
+        category: "streaming",
+        endpoint: "flink-k8s-operator",
         icon: Waves,
         iconColor: "text-primary",
         url: "/flink",
+    },
+    {
+        nameKey: "ext.airflow" as const,
+        descKey: "ext.airflowDesc" as const,
+        categoryKey: "home.catOrchestration" as const,
+        category: "orchestration",
+        endpoint: "airflow-web:8080",
+        icon: Activity,
+        iconColor: "text-warning",
+        url: "http://airflow.aetherlake.local",
+    },
+    {
+        nameKey: "ext.superset" as const,
+        descKey: "ext.supersetDesc" as const,
+        categoryKey: "home.catOrchestration" as const,
+        category: "orchestration",
+        endpoint: "superset:8088",
+        icon: BarChart3,
+        iconColor: "text-accent",
+        url: "http://superset.aetherlake.local",
+    },
+];
+
+const CATEGORIES = [
+    { id: "all", labelKey: "home.allCategories" as const },
+    { id: "lakehouse", labelKey: "home.catLakehouse" as const },
+    { id: "compute", labelKey: "home.catCompute" as const },
+    { id: "streaming", labelKey: "home.catStreaming" as const },
+    { id: "orchestration", labelKey: "home.catOrchestration" as const },
+];
+
+const QUICK_LAUNCH = [
+    {
+        titleKey: "home.runSql" as const,
+        descKey: "home.runSqlDesc" as const,
+        href: "/query",
+        icon: Code2,
+        iconColor: "text-primary",
+    },
+    {
+        titleKey: "home.exploreTables" as const,
+        descKey: "home.exploreTablesDesc" as const,
+        href: "/tables",
+        icon: Database,
+        iconColor: "text-warning",
+    },
+    {
+        titleKey: "home.streamProcessing" as const,
+        descKey: "home.streamProcessingDesc" as const,
+        href: "/flink",
+        icon: Waves,
+        iconColor: "text-accent",
+    },
+    {
+        titleKey: "home.viewLineage" as const,
+        descKey: "home.viewLineageDesc" as const,
+        href: "/dbt",
+        icon: GitFork,
+        iconColor: "text-success",
+    },
+    {
+        titleKey: "home.viewLogs" as const,
+        descKey: "home.viewLogsDesc" as const,
+        href: "/observability",
+        icon: Activity,
+        iconColor: "text-primary",
     },
 ];
 
@@ -88,6 +159,8 @@ export default function Home() {
     const [podStatuses, setPodStatuses] = useState<Record<string, string>>({});
     const [statusLoading, setStatusLoading] = useState(false);
     const [restartingService, setRestartingService] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState("all");
 
     const [telemetry, setTelemetry] = useState<{
         enabled: boolean;
@@ -266,6 +339,7 @@ export default function Home() {
     // Count healthy
     const healthyCount = Object.values(podStatuses).filter(s => s === "Healthy").length;
     const totalCount = Object.keys(podStatuses).length;
+    const healthPercent = totalCount > 0 ? Math.round((healthyCount / totalCount) * 100) : 100;
 
     const getCloudProviderLabel = (provider?: string) => {
         switch (provider) {
@@ -279,79 +353,166 @@ export default function Home() {
         }
     };
 
+    // Filter services based on category and search query
+    const filteredServices = SERVICES.filter((service) => {
+        const matchesCategory = selectedCategory === "all" || service.category === selectedCategory;
+        const name = t(service.nameKey).toLowerCase();
+        const desc = t(service.descKey).toLowerCase();
+        const ep = service.endpoint.toLowerCase();
+        const query = searchQuery.toLowerCase().trim();
+        const matchesSearch = !query || name.includes(query) || desc.includes(query) || ep.includes(query);
+        return matchesCategory && matchesSearch;
+    });
+
     return (
-        <div className="flex min-h-screen">
+        <div className="flex min-h-screen w-full overflow-x-hidden">
             <Sidebar />
 
-            <main className="ml-[var(--sidebar-width)] flex-1 p-8 max-w-[1200px]">
-                {/* Page Header */}
-                <div className="flex items-center justify-between mb-8">
+            <main className="ml-[var(--sidebar-width)] w-[calc(100vw-var(--sidebar-width))] max-w-[calc(100vw-var(--sidebar-width))] min-w-0 flex-1 p-6 lg:p-8">
+                {/* Standardized Enterprise Page Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-cardBorder">
                     <div>
-                        <h1 className="text-xl font-semibold text-foreground">
-                            {t("home.title")}
-                        </h1>
-                        <p className="text-sm text-muted mt-0.5">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary flex-shrink-0">
+                                <LayoutDashboard className="w-4 h-4" />
+                            </div>
+                            <h1 className="text-lg font-semibold text-foreground tracking-tight">
+                                {t("home.title")}
+                            </h1>
+                            <span className="badge badge-neutral text-[10px]">Kubernetes</span>
+                        </div>
+                        <p className="text-xs text-muted mt-1">
                             {t("home.subtitle")}
                         </p>
                     </div>
-                    <button onClick={() => { fetchStatuses(); fetchTelemetry(); }} className="btn-ghost">
-                        <RefreshCw className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`} />
-                        {t("common.refresh")}
-                    </button>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => { fetchStatuses(); fetchTelemetry(); }} className="btn-ghost text-xs">
+                            <RefreshCw className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`} />
+                            {t("common.refresh")}
+                        </button>
+                    </div>
                 </div>
 
-                {/* Status Summary Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <div className="panel-card p-5">
-                        <p className="text-[11px] text-muted uppercase tracking-wide mb-1">{t("home.activeServices")}</p>
-                        <p className="text-2xl font-semibold text-foreground">{SERVICES.length + (isAdmin ? 1 : 0)}</p>
-                    </div>
-                    <div className="panel-card p-5">
-                        <p className="text-[11px] text-muted uppercase tracking-wide mb-1">Healthy</p>
-                        <p className="text-2xl font-semibold text-success">{healthyCount}<span className="text-sm text-muted font-normal">/{totalCount}</span></p>
-                    </div>
-                    <div className="panel-card p-5">
-                        <p className="text-[11px] text-muted uppercase tracking-wide mb-1">{t("cloud.provider")}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                            <Cloud className="w-5 h-5 text-primary" />
-                            <span className="text-base font-semibold text-foreground truncate">
-                                {telemetry?.cloudProvider?.toUpperCase() || "K8S"}
-                            </span>
+                {/* Standardized 4-Card Enterprise KPI Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                    <div className="panel-card p-4 min-w-0">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider truncate">{t("home.activeServices")}</span>
+                            <Layers className="w-4 h-4 text-primary flex-shrink-0" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-xl font-semibold text-foreground font-mono">{SERVICES.length + (isAdmin ? 1 : 0)}</p>
+                            <span className="text-xs text-muted font-normal">services</span>
                         </div>
                     </div>
-                    <div className="panel-card p-5">
-                        <p className="text-[11px] text-muted uppercase tracking-wide mb-1">{t("cloud.telemetry")}</p>
-                        <div className="flex items-center gap-2 mt-1">
+
+                    <div className="panel-card p-4 min-w-0">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider truncate">{t("home.clusterHealth")}</span>
+                            <span className={`status-dot ${healthyCount === totalCount && totalCount > 0 ? "status-dot-healthy" : "status-dot-pending"}`}></span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-xl font-semibold text-success font-mono">{healthyCount}<span className="text-xs text-muted font-normal">/{totalCount}</span></p>
+                            <span className="text-[11px] font-mono text-muted">({healthPercent}%)</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-card p-4 min-w-0">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider truncate">{t("cloud.provider")}</span>
+                            <Cloud className="w-4 h-4 text-accent flex-shrink-0" />
+                        </div>
+                        <div className="flex items-baseline gap-2 min-w-0">
+                            <p className="text-sm font-semibold text-foreground truncate">
+                                {telemetry?.cloudProvider?.toUpperCase() || "K8S"}
+                            </p>
+                            <span className="text-[10px] text-muted font-mono truncate">{telemetry?.clusterId ? telemetry.clusterId.slice(0, 10) : "local"}</span>
+                        </div>
+                    </div>
+
+                    <div className="panel-card p-4 min-w-0">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-medium text-muted uppercase tracking-wider truncate">{t("cloud.telemetry")}</span>
+                            <button
+                                onClick={handleSendPing}
+                                disabled={pingLoading || !telemetry?.enabled}
+                                className="text-muted hover:text-primary transition-colors disabled:opacity-40 flex-shrink-0"
+                                title={t("cloud.sendPing")}
+                            >
+                                {pingLoading ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />
+                                ) : pingSuccess ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+                                ) : (
+                                    <Send className="w-3.5 h-3.5" />
+                                )}
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-2 min-w-0">
                             <span className={`status-dot ${telemetry?.enabled ? "status-dot-healthy" : "status-dot-pending"}`}></span>
-                            <span className="text-sm font-medium text-foreground">
+                            <span className="text-xs font-medium text-foreground truncate">
                                 {telemetry?.enabled ? t("cloud.telemetryActive") : t("cloud.telemetryOptOut")}
                             </span>
                         </div>
                     </div>
                 </div>
 
+                {/* Enterprise Quick Launchpad */}
+                <div className="mb-6">
+                    <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-xs font-semibold uppercase text-muted tracking-wider">{t("home.quickLaunch")}</h2>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                        {QUICK_LAUNCH.map((item, idx) => {
+                            const Icon = item.icon;
+                            return (
+                                <a
+                                    key={idx}
+                                    href={item.href}
+                                    className="panel-card p-3.5 panel-card-hover flex flex-col justify-between group transition-all min-w-0"
+                                >
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="w-7 h-7 rounded-md bg-card flex items-center justify-center flex-shrink-0">
+                                                <Icon className={`w-3.5 h-3.5 ${item.iconColor}`} />
+                                            </div>
+                                            <ArrowUpRight className="w-3.5 h-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                        </div>
+                                        <h3 className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate">
+                                            {t(item.titleKey)}
+                                        </h3>
+                                        <p className="text-[11px] text-muted line-clamp-2 mt-1 leading-relaxed">
+                                            {t(item.descKey)}
+                                        </p>
+                                    </div>
+                                </a>
+                            );
+                        })}
+                    </div>
+                </div>
+
                 {/* Cloud & Telemetry Banner */}
-                <div className="panel-card p-4 mb-8 bg-surface/80 border border-cardBorder flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="panel-card p-4 mb-6 bg-surface/80 border border-cardBorder flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                            <Server className="w-5 h-5 text-primary" />
+                        <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                            <Server className="w-4 h-4 text-primary" />
                         </div>
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-semibold text-foreground">
+                                <span className="text-xs font-semibold text-foreground">
                                     {getCloudProviderLabel(telemetry?.cloudProvider)}
                                 </span>
                                 <span className="badge badge-neutral text-[10px] font-mono">
                                     {telemetry?.clusterId || "cl-local-instance"}
                                 </span>
                             </div>
-                            <p className="text-xs text-muted mt-0.5">
+                            <p className="text-[11px] text-muted mt-0.5">
                                 {t("cloud.lastPing")}: {telemetry?.lastPingTime ? new Date(telemetry.lastPingTime).toLocaleTimeString() : t("cloud.never")}
                             </p>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 self-end md:self-auto">
+                    <div className="flex items-center gap-2 self-end md:self-auto flex-shrink-0">
                         <button
                             onClick={handleSendPing}
                             disabled={pingLoading || !telemetry?.enabled}
@@ -370,116 +531,197 @@ export default function Home() {
                     </div>
                 </div>
 
-                {/* Services Table */}
+                {/* Service Health & Registry Table Panel */}
                 <div className="panel-card overflow-hidden">
-                    <div className="px-5 py-3 border-b border-cardBorder flex items-center justify-between">
-                        <h2 className="text-sm font-semibold text-foreground">{t("home.serviceStatus")}</h2>
-                        <span className="badge badge-neutral">{SERVICES.length} services</span>
+                    {/* Header + Search + Category Filter */}
+                    <div className="p-3 sm:p-4 border-b border-cardBorder flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-surface/40">
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            <h2 className="text-sm font-semibold text-foreground">{t("home.serviceStatus")}</h2>
+                            <span className="badge badge-neutral">{filteredServices.length + (isAdmin ? 1 : 0)}</span>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-wrap min-w-0">
+                            {/* Search bar */}
+                            <div className="relative w-full sm:w-40 xl:w-48 flex-shrink-0">
+                                <Search className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                <input
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder={t("home.searchServices")}
+                                    className="input-field text-xs py-1.5 pl-8 pr-7 w-full"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        onClick={() => setSearchQuery("")}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Category Filter Pills */}
+                            <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 flex-nowrap">
+                                {CATEGORIES.map((cat) => (
+                                    <button
+                                        key={cat.id}
+                                        onClick={() => setSelectedCategory(cat.id)}
+                                        className={`text-[11px] px-2 py-1 rounded-md transition-colors whitespace-nowrap ${
+                                            selectedCategory === cat.id
+                                                ? "bg-primary text-white font-medium"
+                                                : "text-muted hover:text-foreground bg-card border border-cardBorder"
+                                        }`}
+                                    >
+                                        {t(cat.labelKey)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
 
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>Service</th>
-                                <th>{t("home.description")}</th>
-                                <th>{t("home.status")}</th>
-                                <th className="text-right">{t("home.actions")}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {SERVICES.map((service) => {
-                                const name = t(service.nameKey);
-                                const liveStatus = podStatuses[name] || "Unknown";
-                                const isInternal = service.url.startsWith("/");
-                                const isRestarting = restartingService === name;
-                                const Icon = service.icon;
-
-                                return (
-                                    <tr key={service.nameKey}>
-                                        <td>
-                                            <div className="flex items-center gap-3">
-                                                <Icon className={`w-4 h-4 ${service.iconColor}`} />
-                                                <a
-                                                    href={service.url}
-                                                    target={isInternal ? undefined : "_blank"}
-                                                    rel={isInternal ? undefined : "noreferrer"}
-                                                    className="text-foreground font-medium text-sm hover:text-primary transition-colors"
-                                                >
-                                                    {name}
-                                                </a>
-                                                {!isInternal && <ExternalLink className="w-3 h-3 text-muted" />}
-                                            </div>
-                                        </td>
-                                        <td className="text-muted">{t(service.descKey)}</td>
-                                        <td>
-                                            <span className={`badge ${statusBadgeClass(liveStatus)}`}>
-                                                <span className={`status-dot ${statusDotClass(liveStatus)}`}></span>
-                                                {liveStatus}
-                                            </span>
-                                        </td>
-                                        <td className="text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={(e) => handleRestart(e, name)}
-                                                    disabled={isRestarting}
-                                                    className="btn-ghost text-xs"
-                                                >
-                                                    <RefreshCw className={`w-3 h-3 ${isRestarting ? "animate-spin" : ""}`} />
-                                                    {isRestarting ? t("common.restarting") : t("common.restart")}
-                                                </button>
-                                                <a
-                                                    href={service.url}
-                                                    target={isInternal ? undefined : "_blank"}
-                                                    rel={isInternal ? undefined : "noreferrer"}
-                                                    className="btn-ghost text-xs"
-                                                >
-                                                    <ArrowUpRight className="w-3 h-3" />
-                                                    {isInternal ? t("common.open") : t("common.openConsole")}
-                                                </a>
-                                            </div>
+                    <div className="overflow-x-auto">
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Service</th>
+                                    <th>Category</th>
+                                    <th>{t("home.endpoint")}</th>
+                                    <th>{t("home.description")}</th>
+                                    <th>{t("home.status")}</th>
+                                    <th className="text-right pr-4">{t("home.actions")}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredServices.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="text-center py-8 text-xs text-muted">
+                                            {t("home.noServicesFound")}
                                         </td>
                                     </tr>
-                                );
-                            })}
+                                ) : (
+                                    filteredServices.map((service) => {
+                                        const name = t(service.nameKey);
+                                        const liveStatus = podStatuses[name] || "Unknown";
+                                        const isInternal = service.url.startsWith("/");
+                                        const isRestarting = restartingService === name;
+                                        const Icon = service.icon;
 
-                            {/* Keycloak Admin Row */}
-                            {isAdmin && (
-                                <tr>
-                                    <td>
-                                        <div className="flex items-center gap-3">
-                                            <Key className="w-4 h-4 text-accent" />
+                                        return (
+                                            <tr key={service.nameKey}>
+                                                <td>
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-6 h-6 rounded-md bg-card flex items-center justify-center flex-shrink-0">
+                                                            <Icon className={`w-3.5 h-3.5 ${service.iconColor}`} />
+                                                        </div>
+                                                        <a
+                                                            href={service.url}
+                                                            target={isInternal ? undefined : "_blank"}
+                                                            rel={isInternal ? undefined : "noreferrer"}
+                                                            className="text-foreground font-medium text-xs hover:text-primary transition-colors font-sans"
+                                                        >
+                                                            {name}
+                                                        </a>
+                                                        {!isInternal && <ExternalLink className="w-3 h-3 text-muted/60 flex-shrink-0" />}
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span className="badge badge-neutral text-[10px]">
+                                                        {t(service.categoryKey)}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <code className="text-[11px] text-muted font-mono">{service.endpoint}</code>
+                                                </td>
+                                                <td>
+                                                    <div className="text-muted text-xs max-w-[180px] xl:max-w-[220px] truncate" title={t(service.descKey)}>
+                                                        {t(service.descKey)}
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${statusBadgeClass(liveStatus)}`}>
+                                                        <span className={`status-dot ${statusDotClass(liveStatus)}`}></span>
+                                                        {liveStatus}
+                                                    </span>
+                                                </td>
+                                                <td className="text-right pr-4">
+                                                    <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                                                        <button
+                                                            onClick={(e) => handleRestart(e, name)}
+                                                            disabled={isRestarting}
+                                                            className="btn-ghost text-xs py-1 px-2"
+                                                        >
+                                                            <RefreshCw className={`w-3 h-3 ${isRestarting ? "animate-spin" : ""}`} />
+                                                            {isRestarting ? t("common.restarting") : t("common.restart")}
+                                                        </button>
+                                                        <a
+                                                            href={service.url}
+                                                            target={isInternal ? undefined : "_blank"}
+                                                            rel={isInternal ? undefined : "noreferrer"}
+                                                            className="btn-ghost text-xs py-1 px-2"
+                                                        >
+                                                            <ArrowUpRight className="w-3 h-3" />
+                                                            {t("common.open")}
+                                                        </a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+
+                                {/* Keycloak Admin Row if applicable */}
+                                {isAdmin && (selectedCategory === "all" || selectedCategory === "security") && (
+                                    <tr>
+                                        <td>
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-6 h-6 rounded-md bg-card flex items-center justify-center flex-shrink-0">
+                                                    <Key className="w-3.5 h-3.5 text-accent" />
+                                                </div>
+                                                <a
+                                                    href="http://keycloak.aetherlake.local"
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="text-foreground font-medium text-xs hover:text-primary transition-colors font-sans"
+                                                >
+                                                    {t("ext.keycloak")}
+                                                </a>
+                                                <ExternalLink className="w-3 h-3 text-muted/60 flex-shrink-0" />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span className="badge badge-neutral text-[10px]">
+                                                {t("home.catSecurity")}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <code className="text-[11px] text-muted font-mono">keycloak:8080</code>
+                                        </td>
+                                        <td>
+                                            <div className="text-muted text-xs max-w-[180px] xl:max-w-[220px] truncate" title={t("ext.keycloakDesc")}>
+                                                {t("ext.keycloakDesc")}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span className="badge badge-info text-[10px]">
+                                                {t("common.adminOnly")}
+                                            </span>
+                                        </td>
+                                        <td className="text-right pr-4">
                                             <a
                                                 href="http://keycloak.aetherlake.local"
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="text-foreground font-medium text-sm hover:text-primary transition-colors"
+                                                className="btn-ghost text-xs py-1 px-2"
                                             >
-                                                {t("ext.keycloak")}
+                                                <ArrowUpRight className="w-3 h-3" />
+                                                {t("common.open")}
                                             </a>
-                                            <ExternalLink className="w-3 h-3 text-muted" />
-                                        </div>
-                                    </td>
-                                    <td className="text-muted">{t("ext.keycloakDesc")}</td>
-                                    <td>
-                                        <span className="badge badge-info">
-                                            {t("common.adminOnly")}
-                                        </span>
-                                    </td>
-                                    <td className="text-right">
-                                        <a
-                                            href="http://keycloak.aetherlake.local"
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="btn-ghost text-xs"
-                                        >
-                                            <ArrowUpRight className="w-3 h-3" />
-                                            {t("common.openConsole")}
-                                        </a>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </main>
         </div>

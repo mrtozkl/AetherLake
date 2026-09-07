@@ -28,7 +28,25 @@ features:
     details: A built-in MCP server lets AI assistants check status, query Trino and manage catalogs and pipelines.
 ---
 
-<div style="margin-top: 3rem; display: flex; flex-direction: column; gap: 2rem; align-items: center;">
-  <img src="/dashboard.png" alt="AetherLake Dashboard" style="border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);" />
-  <img src="/observability.png" alt="AetherLake Observability — live pod logs, events, and metrics" style="border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);" />
+<div style="margin-top: 3rem; display: flex; flex-direction: column; gap: 2.5rem; align-items: center; max-width: 1152px; margin-left: auto; margin-right: auto;">
+  <div style="width: 100%; text-align: center;">
+    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--vp-c-text-1);">Platform Overview & Central Operations</h3>
+    <img src="/dashboard.png" alt="AetherLake Dashboard" style="border-radius: 10px; border: 1px solid var(--vp-c-divider); box-shadow: 0 8px 24px -4px rgb(0 0 0 / 0.25);" />
+  </div>
+
+  <div style="width: 100%; text-align: center;">
+    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--vp-c-text-1);">Workload Observability & Live Resource Metrics</h3>
+    <img src="/observability.png" alt="AetherLake Observability — live pod logs, events, and metrics" style="border-radius: 10px; border: 1px solid var(--vp-c-divider); box-shadow: 0 8px 24px -4px rgb(0 0 0 / 0.25);" />
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; width: 100%;">
+    <div style="text-align: center;">
+      <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--vp-c-text-1);">Iceberg Tables & Live Data Preview</h4>
+      <img src="/tables.png" alt="Iceberg Tables Explorer" style="border-radius: 8px; border: 1px solid var(--vp-c-divider); box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);" />
+    </div>
+    <div style="text-align: center;">
+      <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--vp-c-text-1);">dbt Medallion Lineage DAG</h4>
+      <img src="/dbt.png" alt="dbt Lakehouse Workspace" style="border-radius: 8px; border: 1px solid var(--vp-c-divider); box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);" />
+    </div>
+  </div>
 </div>
