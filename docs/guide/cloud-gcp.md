@@ -42,7 +42,35 @@ This guide covers deploying AetherLake in production on **Google Cloud Platform 
 
 ---
 
-## 🚀 1. GKE Cluster & Workload Identity Setup
+## 🚀 1. Infrastructure Provisioning via Terraform
+
+AetherLake provides a turnkey Terraform module in [`terraform/gcp`](https://github.com/mrtozkl/AetherLake/tree/main/terraform/gcp) that provisions:
+- VPC Network & Subnets with secondary alias IP ranges for GKE pods and services.
+- Google Kubernetes Engine (GKE) cluster with Workload Identity Federation enabled.
+- Dedicated GKE node pools for system services (Control Panel, Polaris, Kafka) and compute workers (Trino, Flink).
+- Google Cloud Storage (GCS) Lakehouse bucket with versioning and lifecycle rules.
+- Google Service Accounts (GSAs) with `roles/storage.objectAdmin` and Workload Identity bindings for Trino and Polaris.
+- Google Cloud SQL for PostgreSQL 16 instance with private VPC peering.
+
+### Deploy Terraform:
+
+```bash
+cd terraform/gcp
+terraform init
+terraform plan -var="gcp_project_id=YOUR_PROJECT_ID" -out=tfplan
+terraform apply tfplan
+```
+
+Configure `kubectl` context:
+```bash
+gcloud container clusters get-credentials aetherlake-gke --region=europe-west1
+```
+
+---
+
+## 🛠️ Manual GKE Setup (Alternative to Terraform)
+
+If not using Terraform, you can provision the cluster manually via `gcloud`:
 
 ### Create a Production GKE Cluster:
 ```bash
@@ -117,43 +145,15 @@ gcloud sql instances create aetherlake-postgres \
 
 ## ⚙️ 4. Helm Deployment Overrides (`values-gcp.yaml`)
 
-Create `values-gcp.yaml` to override local MinIO with Google Cloud Storage:
+AetherLake provides a turnkey production profile in [`helm-charts/core-data-stack/values-gcp.yaml`](https://github.com/mrtozkl/AetherLake/tree/main/helm-charts/core-data-stack/values-gcp.yaml) configured with GCS, GKE Workload Identity, Cloud SQL, and SSD Kafka storage:
 
-```yaml
-# Disable local MinIO tenant (using Google Cloud Storage)
-minio:
-  enabled: false
-
-# Configure Trino for GCS / S3 Interoperability
-trino:
-  catalogs:
-    iceberg:
-      connector.name: iceberg
-      iceberg.catalog.type: rest
-      iceberg.rest-catalog.uri: http://core-data-stack-polaris:8181/api/catalog
-      iceberg.rest-catalog.warehouse: gs://aetherlake-lakehouse/warehouse
-      hive.s3.endpoint: https://storage.googleapis.com
-      hive.s3.path-style-access: true
-      hive.s3.ssl.enabled: true
-
-# Enable GKE Ingress with Google-managed Certificate
-ingress:
-  enabled: true
-  className: "gce"
-  annotations:
-    kubernetes.io/ingress.class: "gce"
-    networking.gke.io/managed-certificates: "aetherlake-managed-cert"
-```
-
-### Deploy AetherLake on GKE:
 ```bash
-# 1. Deploy security stack (Keycloak)
-helm upgrade --install security-stack helm-charts/security-stack \
-  -n aetherlake --create-namespace
+# 1. Deploy security stack (Keycloak SSO)
+helm upgrade --install security-stack ./helm-charts/security-stack \
+  --namespace aetherlake --create-namespace
 
-# 2. Deploy core data stack with GCP overrides
-helm upgrade --install core-data-stack helm-charts/core-data-stack \
-  -n aetherlake \
-  -f helm-charts/core-data-stack/values.yaml \
-  -f values-gcp.yaml
+# 2. Deploy core data stack with GCP production profile
+helm upgrade --install core-data-stack ./helm-charts/core-data-stack \
+  -f ./helm-charts/core-data-stack/values-gcp.yaml \
+  --namespace aetherlake
 ```

@@ -622,3 +622,48 @@ flink-kubernetes-operator:
   image:
     repository: apache/flink-kubernetes-operator
     tag: "1.15.0"
+
+# 10. Prometheus & Grafana Observability Stack
+# Supports two deployment and integration modes:
+#   1. "builtin" (default): Deploys in-cluster Prometheus TSDB & pre-configured Grafana dashboards.
+#   2. "external": Connects the platform to your existing external Grafana and/or Prometheus instances.
+#      Optionally enables Prometheus remote_write to stream in-cluster metrics to external TSDBs (Mimir/Thanos/Cortex).
+monitoring:
+  enabled: true
+  mode: "builtin" # "builtin" | "external"
+
+  # Built-in in-cluster stack configuration
+  builtin:
+    prometheus:
+      image: "prom/prometheus:v2.51.0"
+      retention: "15d"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+    grafana:
+      image: "grafana/grafana:10.4.1"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+
+  # External monitoring integration
+  external:
+    # URL to existing external Grafana instance (e.g. "https://grafana.corp.example.com")
+    grafanaUrl: ""
+    # URL to existing external Prometheus server (e.g. "https://prometheus.corp.example.com")
+    prometheusUrl: ""
+    # Optional remote_write endpoint to stream in-cluster metrics to external TSDB (Mimir/Thanos/Cortex)
+    remoteWriteUrl: ""
+    # Optional Basic Auth credentials for remote_write
+    remoteWriteAuth:
+      username: ""
+      passwordSecret: ""
+      passwordKey: ""

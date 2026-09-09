@@ -93,6 +93,16 @@ const SERVICES = [
         iconColor: "text-accent",
         url: "http://superset.aetherlake.local",
     },
+    {
+        nameKey: "ext.grafana" as const,
+        descKey: "ext.grafanaDesc" as const,
+        categoryKey: "home.catObservability" as const,
+        category: "observability",
+        endpoint: "grafana:3000",
+        icon: Activity,
+        iconColor: "text-warning",
+        url: process.env.NEXT_PUBLIC_GRAFANA_URL || "http://grafana.aetherlake.local",
+    },
 ];
 
 const CATEGORIES = [
@@ -101,6 +111,7 @@ const CATEGORIES = [
     { id: "compute", labelKey: "home.catCompute" as const },
     { id: "streaming", labelKey: "home.catStreaming" as const },
     { id: "orchestration", labelKey: "home.catOrchestration" as const },
+    { id: "observability", labelKey: "home.catObservability" as const },
 ];
 
 const QUICK_LAUNCH = [

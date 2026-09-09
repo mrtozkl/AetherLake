@@ -53,6 +53,7 @@ export default withMermaid(defineConfig({
           { text: 'Apache Flink — Stream Processing', link: '/guide/components/flink' },
           { text: 'dbt — Data Transformations', link: '/guide/components/dbt' },
           { text: 'PostgreSQL — Datastores', link: '/guide/components/postgres' },
+          { text: 'Prometheus & Grafana — Observability', link: '/guide/components/monitoring' },
         ]
       },
       {

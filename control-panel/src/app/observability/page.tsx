@@ -261,6 +261,15 @@ export default function ObservabilityPage() {
                                 </div>
                             )}
                         </div>
+                        <a
+                            href={process.env.NEXT_PUBLIC_GRAFANA_URL || "http://grafana.aetherlake.local"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn-secondary text-xs flex items-center gap-1.5 text-warning border-warning/30 hover:border-warning/60"
+                        >
+                            <Activity className="w-3.5 h-3.5" />
+                            <span>{t("obs.openGrafana")}</span>
+                        </a>
                         <button onClick={fetchPods} className="btn-ghost text-xs">
                             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> {t("common.refresh")}
                         </button>

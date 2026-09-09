@@ -95,6 +95,15 @@ export default function Sidebar() {
                         <BarChart3 className="w-4 h-4" />
                         <span>Apache Superset</span>
                     </a>
+                    <a
+                        href={process.env.NEXT_PUBLIC_GRAFANA_URL || "http://grafana.aetherlake.local"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="sidebar-link"
+                    >
+                        <Activity className="w-4 h-4 text-warning" />
+                        <span>Grafana Dashboards</span>
+                    </a>
                 </div>
             </nav>
 

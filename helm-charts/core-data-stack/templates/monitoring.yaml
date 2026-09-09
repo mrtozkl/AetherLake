@@ -1,0 +1,442 @@
+{{- if .Values.monitoring.enabled }}
+# ==============================================================================
+# AetherLake Monitoring Stack (Prometheus & Grafana)
+# ==============================================================================
+# Supports two modes:
+#   1. "builtin" (default): Deploys in-cluster Prometheus TSDB and Grafana dashboards.
+#   2. "external": Connects to external Grafana/Prometheus, optionally streaming
+#      in-cluster metrics to external TSDBs (Mimir/Thanos/Cortex) via remote_write.
+# ==============================================================================
+
+{{- $isBuiltin := eq (.Values.monitoring.mode | default "builtin") "builtin" }}
+{{- $hasRemoteWrite := and .Values.monitoring.external .Values.monitoring.external.remoteWriteUrl }}
+{{- $deployPrometheus := or $isBuiltin $hasRemoteWrite (and .Values.monitoring.builtin (hasKey .Values.monitoring.builtin "prometheus") (eq (.Values.monitoring.builtin.prometheus.enabled | toString) "true")) }}
+{{- $deployGrafana := or $isBuiltin (and .Values.monitoring.builtin (hasKey .Values.monitoring.builtin "grafana") (eq (.Values.monitoring.builtin.grafana.enabled | toString) "true")) }}
+
+{{- if $deployPrometheus }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aetherlake-prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-prometheus
+    app.kubernetes.io/part-of: aetherlake
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: aetherlake-prometheus-role
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aetherlake-prometheus-rb
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: aetherlake-prometheus-role
+subjects:
+  - kind: ServiceAccount
+    name: aetherlake-prometheus
+    namespace: {{ .Release.Namespace }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aetherlake-prometheus-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+{{- if $hasRemoteWrite }}
+    remote_write:
+      - url: {{ .Values.monitoring.external.remoteWriteUrl | quote }}
+{{- if and .Values.monitoring.external.remoteWriteAuth .Values.monitoring.external.remoteWriteAuth.username }}
+        basic_auth:
+          username: {{ .Values.monitoring.external.remoteWriteAuth.username | quote }}
+          password: "${REMOTE_WRITE_PASSWORD}"
+{{- end }}
+{{- end }}
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - {{ .Release.Namespace }}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+
+      - job_name: 'trino'
+        metrics_path: '/v1/metrics'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        static_configs:
+          - targets: ['core-data-stack-trino:8443']
+
+      - job_name: 'minio'
+        metrics_path: '/minio/v2/metrics/cluster'
+        static_configs:
+          - targets: ['minio:9000']
+
+      - job_name: 'kafka'
+        static_configs:
+          - targets: ['aetherlake-kafka-kafka-bootstrap:9404']
+
+      - job_name: 'flink-operator'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['core-data-stack-flink-kubernetes-operator:8080']
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aetherlake-prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-prometheus
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: aetherlake-prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aetherlake-prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-prometheus
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aetherlake-prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aetherlake-prometheus
+        app.kubernetes.io/part-of: aetherlake
+    spec:
+      serviceAccountName: aetherlake-prometheus
+      containers:
+        - name: prometheus
+          image: {{ if and .Values.monitoring.builtin .Values.monitoring.builtin.prometheus }}{{ .Values.monitoring.builtin.prometheus.image | default "prom/prometheus:v2.51.0" }}{{ else }}{{ .Values.monitoring.prometheus.image | default "prom/prometheus:v2.51.0" }}{{ end }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time={{ if and .Values.monitoring.builtin .Values.monitoring.builtin.prometheus }}{{ .Values.monitoring.builtin.prometheus.retention | default "15d" }}{{ else }}{{ .Values.monitoring.prometheus.retention | default "15d" }}{{ end }}"
+            - "--web.enable-lifecycle"
+          ports:
+            - name: http
+              containerPort: 9090
+          resources:
+            {{- if and .Values.monitoring.builtin .Values.monitoring.builtin.prometheus }}
+            {{- toYaml .Values.monitoring.builtin.prometheus.resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml .Values.monitoring.prometheus.resources | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: storage
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: aetherlake-prometheus-config
+        - name: storage
+          emptyDir: {}
+{{- end }}
+
+{{- if $deployGrafana }}
+---
+# ==============================================================================
+# Grafana (Unified Analytics & Lakehouse Dashboards)
+# ==============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aetherlake-grafana-datasources
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-grafana
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://aetherlake-prometheus:9090
+        isDefault: true
+        editable: false
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aetherlake-grafana-dashboards-provider
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-grafana
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'AetherLake'
+        orgId: 1
+        folder: 'AetherLake'
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aetherlake-grafana-dashboards
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-grafana
+data:
+  lakehouse-overview.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": false,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "Platform Health & Overview",
+          "type": "row"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            }
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+          "id": 2,
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "title": "Prometheus Scrape Target Status",
+          "type": "stat",
+          "targets": [{ "expr": "up{job=\"prometheus\"}", "refId": "A" }]
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short"
+            }
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+          "id": 3,
+          "options": { "reduceOptions": { "calcs": ["sum"] } },
+          "title": "Active Monitored Pods",
+          "type": "stat",
+          "targets": [{ "expr": "count(up{kubernetes_namespace=\"aetherlake\"})", "refId": "A" }]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+          "id": 4,
+          "title": "Trino SQL Query Engine & Storage",
+          "type": "row"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 },
+              "unit": "reqps"
+            }
+          },
+          "gridPos": { "h": 7, "w": 12, "x": 0, "y": 6 },
+          "id": 5,
+          "title": "Query & Request Rate",
+          "type": "timeseries",
+          "targets": [
+            { "expr": "rate(prometheus_http_requests_total[1m])", "legendFormat": "HTTP Requests", "refId": "A" }
+          ]
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 },
+              "unit": "bytes"
+            }
+          },
+          "gridPos": { "h": 7, "w": 12, "x": 12, "y": 6 },
+          "id": 6,
+          "title": "Process Memory Consumption",
+          "type": "timeseries",
+          "targets": [
+            { "expr": "process_resident_memory_bytes", "legendFormat": "{{ "{{" }} job {{ "}}" }}", "refId": "A" }
+          ]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["aetherlake", "lakehouse", "trino", "kafka", "flink"],
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "AetherLake Lakehouse Unified Monitoring",
+      "version": 1
+    }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aetherlake-grafana
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-grafana
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: aetherlake-grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aetherlake-grafana
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: aetherlake-grafana
+    app.kubernetes.io/part-of: aetherlake
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aetherlake-grafana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aetherlake-grafana
+        app.kubernetes.io/part-of: aetherlake
+    spec:
+      containers:
+        - name: grafana
+          image: {{ if and .Values.monitoring.builtin .Values.monitoring.builtin.grafana }}{{ .Values.monitoring.builtin.grafana.image | default "grafana/grafana:10.4.1" }}{{ else }}{{ .Values.monitoring.grafana.image | default "grafana/grafana:10.4.1" }}{{ end }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret | default "aetherlake-credentials" }}
+                  key: grafana-admin-password
+                  optional: true
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_SERVER_ROOT_URL
+              value: "http://grafana.aetherlake.local"
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Viewer"
+          resources:
+            {{- if and .Values.monitoring.builtin .Values.monitoring.builtin.grafana }}
+            {{- toYaml .Values.monitoring.builtin.grafana.resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml .Values.monitoring.grafana.resources | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+            - name: storage
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: datasources
+          configMap:
+            name: aetherlake-grafana-datasources
+        - name: dashboards-provider
+          configMap:
+            name: aetherlake-grafana-dashboards-provider
+        - name: dashboards
+          configMap:
+            name: aetherlake-grafana-dashboards
+        - name: storage
+          emptyDir: {}
+{{- end }}
+{{- end }}

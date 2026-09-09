@@ -23,6 +23,8 @@ const SERVICE_POD_MAP: Record<string, { label: string; value: string }> = {
     // The operator pod: per-job Flink clusters come and go with each SQL job.
     'Apache Flink': { label: 'app.kubernetes.io/name', value: 'flink-kubernetes-operator' },
     'Keycloak': { label: 'app.kubernetes.io/name', value: 'keycloak' },
+    'Prometheus': { label: 'app.kubernetes.io/name', value: 'aetherlake-prometheus' },
+    'Grafana': { label: 'app.kubernetes.io/name', value: 'aetherlake-grafana' },
 };
 
 function getPodStatus(pod: any): 'Healthy' | 'Pending' | 'Offline' | 'Error' {

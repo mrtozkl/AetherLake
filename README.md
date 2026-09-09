@@ -84,6 +84,8 @@ Per-component deep dives (settings, diagrams, operations) live in
 | [Apache Superset](https://superset.apache.org/) | BI & dashboards | 3.1.2 |
 | [Apache Spark](https://spark.apache.org/) | Batch processing | Operator 1.1.27 |
 | [Milvus](https://milvus.io/) | Vector search | chart 5.0.14 |
+| [Prometheus](https://prometheus.io/) | Metrics & time-series monitoring | 2.51.0 |
+| [Grafana](https://grafana.com/) | Unified observability dashboards | 10.4.1 |
 | PostgreSQL | Metadata stores | 16 |
 | Control Panel | Platform UI (Next.js) | EN/TR |
 
@@ -106,6 +108,7 @@ Add local DNS entries:
 127.0.0.1  minio.aetherlake.local trino.aetherlake.local polaris.aetherlake.local
 127.0.0.1  keycloak.aetherlake.local airflow.aetherlake.local superset.aetherlake.local
 127.0.0.1  milvus.aetherlake.local oauth2.aetherlake.local
+127.0.0.1  grafana.aetherlake.local prometheus.aetherlake.local
 ```
 
 | Service | URL | Auth |
@@ -113,6 +116,8 @@ Add local DNS entries:
 | Control Panel | `http://localhost:3000` | dev login `admin`/`admin` (local dev only) |
 | Trino UI | `http://trino.aetherlake.local` | Keycloak SSO |
 | Milvus (Attu) | `http://milvus.aetherlake.local` | Keycloak SSO |
+| Grafana | `http://grafana.aetherlake.local` | Keycloak SSO |
+| Prometheus | `http://prometheus.aetherlake.local` | Keycloak SSO |
 | MinIO Console | `http://minio.aetherlake.local` | Keycloak OIDC |
 | Airflow | `http://airflow.aetherlake.local` | Keycloak OIDC |
 | Superset | `http://superset.aetherlake.local` | Keycloak OIDC |
@@ -281,15 +286,18 @@ queries, Polaris catalogs, Airflow DAGs. Build with
 ## 📁 Project Structure
 
 ```
-├── control-panel/        # Next.js 16 UI (overview, kafka, flink, telemetry, …)
+├── control-panel/        # Next.js 16 UI (overview, kafka, flink, dbt, telemetry, …)
 ├── helm-charts/
-│   ├── core-data-stack/  # Data infra chart (+ values-aws.yaml, values-azure.yaml)
+│   ├── core-data-stack/  # Data infra chart (+ values-aws.yaml, values-azure.yaml, values-gcp.yaml)
 │   └── security-stack/   # Keycloak + realm/OIDC provisioning
 ├── terraform/
 │   ├── aws/              # AWS EKS, S3 Lakehouse, IAM IRSA, RDS PostgreSQL
-│   └── azure/            # Azure AKS, ADLS Gen2, Workload Identity, Flexible PG
+│   ├── azure/            # Azure AKS, ADLS Gen2, Workload Identity, Flexible PG
+│   └── gcp/              # GCP GKE, GCS Lakehouse, Workload Identity, Cloud SQL PG
 ├── mcp-server/           # MCP tools for AI assistants
 ├── pipelines/            # Airflow DAGs, Spark, Flink SQL-runner + examples, dbt
+├── telemetry-collector/  # Telemetry ingestion endpoint & health aggregation
+├── telemetry-worker/     # Cloudflare Worker edge telemetry collector
 ├── docs/                 # Multi-cloud deployment guides & telemetry reference
 ├── aetherlake-ingress.yaml
 └── install.sh
@@ -297,7 +305,7 @@ queries, Polaris catalogs, Airflow DAGs. Build with
 
 ---
 
-## ☁️ Cloud Deployments (AWS & Azure)
+## ☁️ Cloud Deployments (AWS, Azure & GCP)
 
 AetherLake is cloud-native and ready for production deployment on major cloud providers:
 
@@ -309,6 +317,10 @@ AetherLake is cloud-native and ready for production deployment on major cloud pr
   - Terraform Module: [`terraform/azure/`](terraform/azure/)
   - Helm Profile: [`helm-charts/core-data-stack/values-azure.yaml`](helm-charts/core-data-stack/values-azure.yaml)
   - Deployment Guide: [`docs/guide/cloud-azure.md`](docs/guide/cloud-azure.md)
+- **Google Cloud Platform (GCP)**: Google Kubernetes Engine (GKE) + Google Cloud Storage (GCS) + Workload Identity Federation + Cloud SQL for PostgreSQL.
+  - Terraform Module: [`terraform/gcp/`](terraform/gcp/)
+  - Helm Profile: [`helm-charts/core-data-stack/values-gcp.yaml`](helm-charts/core-data-stack/values-gcp.yaml)
+  - Deployment Guide: [`docs/guide/cloud-gcp.md`](docs/guide/cloud-gcp.md)
 
 ---
 
@@ -322,10 +334,16 @@ AetherLake includes an anonymous heartbeat to track installation counts, detecte
 
 - [x] AWS EKS + S3 + IAM IRSA Terraform & Helm Stack
 - [x] Azure AKS + ADLS Gen2 + Workload Identity Terraform & Helm Stack
-- [x] Anonymous Installation & Health Telemetry
-- [ ] Grafana + Prometheus stack
-- [ ] Apache Ranger policies · lineage UI · multi-cluster federation
-- [ ] GitOps (ArgoCD) · automated backups · chart on an artifact registry
+- [x] Google Cloud Platform (GCP) GKE + GCS + Cloud SQL Terraform Module & Helm Profile (`values-gcp.yaml`)
+- [x] Anonymous Installation & Health Telemetry Engine
+- [x] Interactive Medallion dbt Workspace & React Flow Lineage DAG
+- [x] Multi-Platform Automated Installer (`install.sh`) with Telemetry & Metrics
+- [x] Automated GitHub Actions CI & Multi-Stack Test Suites
+- [x] Grafana + Prometheus full observability stack (unified Lakehouse dashboards)
+- [ ] Apache Ranger fine-grained data governance & column/row-level security
+- [ ] Multi-cluster federation & cross-region disaster recovery
+- [ ] GitOps (ArgoCD / Flux) · automated backups · chart on an OCI artifact registry
+- [ ] MCP Server streaming & transformation tools (Kafka, Flink, dbt)
 
 ---
 

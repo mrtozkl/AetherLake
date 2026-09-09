@@ -1,0 +1,91 @@
+# ==============================================================================
+# AetherLake Core Data Stack - GCP Production Profile (GKE + GCS + Cloud SQL)
+# ==============================================================================
+# Usage:
+#   helm upgrade --install core-data-stack ./helm-charts/core-data-stack \
+#     -f ./helm-charts/core-data-stack/values-gcp.yaml \
+#     --namespace aetherlake
+# ==============================================================================
+
+global:
+  cloudProvider: "gcp"
+  existingSecret: "open-lake-credentials"
+  gcp:
+    project: "aetherlake-prod-project"
+    bucket: "aetherlake-lakehouse-prod"
+    region: "europe-west1"
+
+# Disable local MinIO container since Google Cloud Storage (GCS) is used natively
+minio:
+  enabled: false
+
+# Telemetry: Anonymous installation and health metrics
+telemetry:
+  enabled: true
+  endpoint: "https://aetherlake-telemetry.mrtozkl.workers.dev/v1/ping"
+  cronSchedule: "0 0 * * *" # Daily heartbeat
+
+# Apache Polaris (Iceberg REST Catalog) on GCP
+polaris:
+  enabled: true
+  replicaCount: 2
+  serviceAccount:
+    create: true
+    annotations:
+      iam.gke.io/gcp-service-account: "aetherlake-gke-polaris@aetherlake-prod-project.iam.gserviceaccount.com"
+  storage:
+    type: "GCS"
+    defaultBaseLocation: "gs://aetherlake-lakehouse-prod/polaris"
+  initCatalog:
+    enabled: true
+    name: "lakehouse_catalog"
+    gcsBucket: "aetherlake-lakehouse-prod"
+
+# Trino (SQL Engine) configured for GCP GCS & Workload Identity
+trino:
+  enabled: true
+  server:
+    workers: 4
+  serviceAccount:
+    create: true
+    annotations:
+      iam.gke.io/gcp-service-account: "aetherlake-gke-trino@aetherlake-prod-project.iam.gserviceaccount.com"
+  additionalCatalogs:
+    iceberg: |-
+      connector.name=iceberg
+      iceberg.catalog.type=rest
+      iceberg.rest-catalog.uri=http://core-data-stack-polaris:8181/api/catalog
+      iceberg.rest-catalog.warehouse=lakehouse_catalog
+      iceberg.rest-catalog.security=OAUTH2
+      iceberg.rest-catalog.oauth2.credential=${ENV:POLARIS_CREDENTIAL}
+      iceberg.rest-catalog.oauth2.scope=PRINCIPAL_ROLE:ALL
+      iceberg.rest-catalog.vended-credentials-enabled=true
+      fs.native-gcs.enabled=true
+      gcs.project-id=aetherlake-prod-project
+
+# Apache Kafka (Strimzi) on GCP with persistent SSD storage
+kafka:
+  enabled: true
+  storage:
+    type: persistent-claim
+    size: 100Gi
+    class: standard-rwo
+
+# Apache Flink on GCP with GCS checkpointing
+flink:
+  enabled: true
+  flinkProperties:
+    state.backend: filesystem
+    state.checkpoints.dir: gs://aetherlake-lakehouse-prod/flink/checkpoints
+    state.savepoints.dir: gs://aetherlake-lakehouse-prod/flink/savepoints
+
+# External PostgreSQL (Google Cloud SQL for PostgreSQL)
+externalPostgresql:
+  enabled: true
+  host: "10.20.0.5" # Replace with your Cloud SQL Private IP
+  port: 5432
+  database: "aetherlake"
+  username: "aetheradmin"
+  existingSecret: "gcp-postgres-credentials"
+  secretKeys:
+    adminPasswordKey: "postgres-password"

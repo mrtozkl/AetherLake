@@ -31,6 +31,7 @@ export const translations = {
         "nav.kafka": "Apache Kafka",
         "nav.flink": "Apache Flink",
         "nav.query": "SQL IDE",
+        "nav.grafana": "Grafana Dashboards",
         "nav.platform": "AetherLake",
         "nav.subtitle": "Data Platform",
 
@@ -70,6 +71,8 @@ export const translations = {
         // Observability
         "obs.title": "Observability",
         "obs.subtitle": "Pod logs, events, and resource metrics",
+        "obs.openGrafana": "Open Grafana Dashboards",
+        "obs.grafanaDesc": "Unified Prometheus metrics for Trino, Kafka, Flink, and MinIO.",
         "obs.allServices": "All Services",
         "obs.pods": "Pods",
         "obs.noPods": "No pods found.",
@@ -162,6 +165,8 @@ export const translations = {
         "ext.queryIdeDesc": "Execute federated queries with RBAC.",
         "ext.keycloak": "Keycloak Administration",
         "ext.keycloakDesc": "Manage users, roles, and SSO settings.",
+        "ext.grafana": "Grafana Dashboards",
+        "ext.grafanaDesc": "Unified time-series metrics & Lakehouse operational telemetry.",
 
         // Trino
         "trino.title": "Trino Analytics",
@@ -363,6 +368,7 @@ export const translations = {
         "home.catStreaming": "Streaming & Queue",
         "home.catOrchestration": "Orchestration & BI",
         "home.catSecurity": "Identity & Security",
+        "home.catObservability": "Observability",
         "home.searchServices": "Filter services by name, role or endpoint...",
         "home.noServicesFound": "No services found matching your filter.",
         "home.endpoint": "Endpoint",
@@ -498,6 +504,7 @@ export const translations = {
         "nav.kafka": "Apache Kafka",
         "nav.flink": "Apache Flink",
         "nav.query": "SQL IDE",
+        "nav.grafana": "Grafana Panoları",
         "nav.platform": "AetherLake",
         "nav.subtitle": "Veri Platformu",
 
@@ -537,6 +544,8 @@ export const translations = {
         // Observability
         "obs.title": "Gözlemlenebilirlik",
         "obs.subtitle": "Pod logları, olaylar ve kaynak metrikleri",
+        "obs.openGrafana": "Grafana Panolarını Aç",
+        "obs.grafanaDesc": "Trino, Kafka, Flink ve MinIO için birleşik Prometheus metrikleri.",
         "obs.allServices": "Tüm Servisler",
         "obs.pods": "Pod'lar",
         "obs.noPods": "Pod bulunamadı.",
@@ -629,6 +638,8 @@ export const translations = {
         "ext.queryIdeDesc": "RBAC ile federe sorgular çalıştırın.",
         "ext.keycloak": "Keycloak Yönetimi",
         "ext.keycloakDesc": "Kullanıcı, rol ve SSO ayarlarını yönetin.",
+        "ext.grafana": "Grafana Panoları",
+        "ext.grafanaDesc": "Birleşik zaman serisi metrikleri ve Lakehouse operasyonel telemetrisi.",
 
         // Trino
         "trino.title": "Trino Analytics",
@@ -830,6 +841,7 @@ export const translations = {
         "home.catStreaming": "Akış & Kuyruk",
         "home.catOrchestration": "Orkestrasyon & BI",
         "home.catSecurity": "Kimlik & Güvenlik",
+        "home.catObservability": "Gözlemlenebilirlik",
         "home.searchServices": "Servis adı, rolü veya adresine göre filtrele...",
         "home.noServicesFound": "Filtrenizle eşleşen servis bulunamadı.",
         "home.endpoint": "Uç Nokta",
